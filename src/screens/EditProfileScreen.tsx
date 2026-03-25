@@ -41,6 +41,15 @@ export default function EditProfileScreen({ route, navigation }: Props) {
     onError: () => Toast.show({ type: "error", text1: "Failed to update profile" }),
   });
 
+  function handleSave() {
+    // Fix #11: require non-empty name
+    if (!name.trim()) {
+      Toast.show({ type: "error", text1: "Name cannot be empty" });
+      return;
+    }
+    mutation.mutate();
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.root}
@@ -129,7 +138,7 @@ export default function EditProfileScreen({ route, navigation }: Props) {
 
         <TouchableOpacity
           style={[styles.submitBtn, mutation.isPending && styles.submitBtnDisabled]}
-          onPress={() => mutation.mutate()}
+          onPress={handleSave}
           disabled={mutation.isPending}
           activeOpacity={0.85}
         >

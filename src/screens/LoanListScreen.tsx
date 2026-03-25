@@ -155,7 +155,15 @@ export default function LoanListScreen({ navigation }: Props) {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="clipboard-outline" size={48} color="#CBD5E1" />
-              <Text style={styles.emptyText}>No loans found</Text>
+              <Text style={styles.emptyText}>
+                {search
+                  ? `No loans matching "${search}"`
+                  : tab === "active"
+                  ? "No active loans"
+                  : tab === "returned"
+                  ? "No returned loans yet"
+                  : "No loans yet"}
+              </Text>
             </View>
           }
         />

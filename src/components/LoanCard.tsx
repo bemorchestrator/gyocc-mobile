@@ -15,6 +15,9 @@ interface Props {
 
 export default function LoanCard({ item, onPress, onDelete }: Props) {
   const isActive = !item.actualReturnDate;
+  const isOverdue = isActive && item.expectedReturnDate
+    ? new Date(item.expectedReturnDate) < new Date()
+    : false;
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.75}>
@@ -40,9 +43,13 @@ export default function LoanCard({ item, onPress, onDelete }: Props) {
         </View>
       </View>
       <View style={styles.rightCol}>
-        <View style={[styles.badge, { backgroundColor: isActive ? "#E6F7F5" : "#F1F5F9" }]}>
-          <Text style={[styles.badgeText, { color: isActive ? TEAL : "#64748B" }]}>
-            {isActive ? "Active" : "Returned"}
+        <View style={[styles.badge, {
+          backgroundColor: isOverdue ? "#FEF3C7" : isActive ? "#E6F7F5" : "#F1F5F9",
+        }]}>
+          <Text style={[styles.badgeText, {
+            color: isOverdue ? "#D97706" : isActive ? TEAL : "#64748B",
+          }]}>
+            {isOverdue ? "Overdue" : isActive ? "Active" : "Returned"}
           </Text>
         </View>
         {onDelete && (

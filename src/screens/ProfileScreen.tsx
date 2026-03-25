@@ -1,7 +1,7 @@
 import React from "react";
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Image,
+  StyleSheet, Image, RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +19,7 @@ export default function ProfileScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
 
-  const { data: profile } = useQuery({
+  const { data: profile, refetch: refetchProfile, isRefetching } = useQuery({
     queryKey: ["profile"],
     queryFn: getProfile,
   });
@@ -30,7 +30,11 @@ export default function ProfileScreen({ navigation }: Props) {
 
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: 120 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetchProfile} tintColor="#fff" />}
+      >
 
         {/* ── Hero ── */}
         <View style={[styles.hero, { paddingTop: insets.top + 20 }]}>
@@ -98,6 +102,19 @@ export default function ProfileScreen({ navigation }: Props) {
               sub="View rate per rank & level"
               onPress={() => navigation.navigate("PayoutRates")}
               divider
+            />
+          </View>
+
+          {/* Tools */}
+          <SectionTitle text="Tools" top />
+          <View style={styles.card}>
+            <NavRow
+              icon="receipt-outline"
+              iconBg="#F0FDF4"
+              iconColor="#16A34A"
+              label="Equipment Loans"
+              sub="Track borrowed equipment"
+              onPress={() => navigation.navigate("LoanList")}
             />
           </View>
 

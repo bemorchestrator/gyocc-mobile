@@ -20,6 +20,7 @@ export interface Equipment {
   acquisitionDate?: string;
   acquisitionCost?: number;
   notes?: string;
+  imageUrl?: string | null;
   createdAt: string;
 }
 
@@ -46,6 +47,22 @@ export interface EquipmentLoan {
 
 export type EquipmentCondition = Equipment["condition"];
 export type BorrowerType = EquipmentLoan["borrowerType"];
+
+// ── Members ──────────────────────────────────────────────────────────────────
+export interface Member {
+  _id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  avatarUrl?: string;
+  section: "Choir" | "Orchestra" | "Both";
+  rank: "Conductor" | "Senior" | "Junior" | "Apprentice";
+  level: 1 | 2 | null;
+  status: "Active" | "Inactive" | "On Leave";
+  joinDate: string;
+  notes?: string;
+  createdAt: string;
+}
 
 // ── Gigs ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +149,7 @@ export interface GigFinance {
     role?: string;
     isExternal: boolean;
     confirmation: string;
+    attended: boolean;
     payoutMode: string;
     payoutAmount: number;
   }[];

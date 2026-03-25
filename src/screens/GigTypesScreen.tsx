@@ -11,6 +11,7 @@ import {
   createGigType,
   updateGigType,
   deleteGigType,
+  listGigs,
 } from "../api/gigs";
 import { GigType } from "../types";
 import { font } from "../constants/fonts";
@@ -80,11 +81,32 @@ export default function GigTypesScreen({ navigation }: Props) {
     setName("");
   }
 
-  function confirmDelete(t: GigType) {
-    Alert.alert("Delete Type", `Delete "${t.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(t._id) },
-    ]);
+  async function confirmDelete(t: GigType) {
+    // Fix #16: check if type is in use before deleting
+    try {
+      const gigsData = await listGigs({ type: t.name });
+      const inUseCount = gigsData.length;
+      if (inUseCount > 0) {
+        Alert.alert(
+          "Type In Use",
+          `"${t.name}" is used by ${inUseCount} gig${inUseCount > 1 ? "s" : ""}. Deleting it won't remove those gigs, but their type label will appear uncoloured. Continue?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete Anyway", style: "destructive", onPress: () => deleteMutation.mutate(t._id) },
+          ]
+        );
+      } else {
+        Alert.alert("Delete Type", `Delete "${t.name}"?`, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(t._id) },
+        ]);
+      }
+    } catch {
+      Alert.alert("Delete Type", `Delete "${t.name}"?`, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => deleteMutation.mutate(t._id) },
+      ]);
+    }
   }
 
   function handleSave() {

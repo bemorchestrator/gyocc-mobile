@@ -248,10 +248,7 @@ export default function GigDetailScreen({ route, navigation }: Props) {
       {/* ── White Sheet ── */}
       <View style={styles.sheet}>
         {/* Tab pills */}
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabRow}
-        >
+        <View style={styles.tabRow}>
           {TABS.map((t) => (
             <TouchableOpacity
               key={t.key}
@@ -263,11 +260,14 @@ export default function GigDetailScreen({ route, navigation }: Props) {
               </Text>
             </TouchableOpacity>
           ))}
-        </ScrollView>
+        </View>
+
+        {/* ── Tab Content ── */}
+        <View style={{ flex: 1 }}>
 
         {/* ── Details Tab ── */}
         {tab === "details" && (
-          <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
             {gigData.contractedFee > 0 && (
               <View style={styles.feeCard}>
                 <Text style={styles.feeLabel}>Contracted Fee</Text>
@@ -419,9 +419,18 @@ export default function GigDetailScreen({ route, navigation }: Props) {
 
         {/* ── Finance Tab ── */}
         {tab === "finance" && (
-          <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
             {finance && (
               <>
+                {/* Fix #2: warn when contractedFee is ₱0 */}
+                {finance.contractedFee === 0 && (
+                  <View style={styles.warnBanner}>
+                    <Ionicons name="warning-outline" size={15} color="#D97706" />
+                    <Text style={styles.warnBannerText}>
+                      Contracted fee is ₱0 — payouts will all be ₱0. Set the fee in Edit Gig.
+                    </Text>
+                  </View>
+                )}
                 {/* 3 stat cards */}
                 <View style={styles.financeCards}>
                   <FinanceCard label="Contracted Fee" value={peso(finance.contractedFee)} color="#1E293B" />
@@ -568,7 +577,7 @@ export default function GigDetailScreen({ route, navigation }: Props) {
 
         {/* ── Gear Tab ── */}
         {tab === "gear" && (
-          <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
             {(gearLoans as GigLoan[]).length === 0 ? (
               <View style={styles.emptyTeam}>
                 <Ionicons name="cube-outline" size={40} color="#CBD5E1" />
@@ -616,13 +625,16 @@ export default function GigDetailScreen({ route, navigation }: Props) {
             )}
           </ScrollView>
         )}
-      </View>
+
+        </View>{/* end tab content wrapper */}
+      </View>{/* end sheet */}
 
       {/* Add Participant Modal */}
       {addOpen && (
         <AddParticipantModal
           gigId={id}
           existingIds={(participants as GigParticipant[]).map((p) => p.memberId).filter(Boolean) as string[]}
+          existingExternalNames={(participants as GigParticipant[]).filter((p) => p.isExternal).map((p) => p.name)}
           onClose={() => setAddOpen(false)}
           onAdded={() => {
             setAddOpen(false);
@@ -665,9 +677,10 @@ function FinanceCard({ label, value, color }: { label: string; value: string; co
   );
 }
 
-function AddParticipantModal({ gigId, existingIds, onClose, onAdded }: {
+function AddParticipantModal({ gigId, existingIds, existingExternalNames, onClose, onAdded }: {
   gigId: string;
   existingIds: string[];
+  existingExternalNames: string[];
   onClose: () => void;
   onAdded: () => void;
 }) {
@@ -707,6 +720,12 @@ function AddParticipantModal({ gigId, existingIds, onClose, onAdded }: {
       } else {
         if (!extName.trim()) {
           Toast.show({ type: "error", text1: "Name is required" });
+          setSaving(false);
+          return;
+        }
+        // Fix #3: external duplicate name check
+        if (existingExternalNames.some((n) => n.toLowerCase() === extName.trim().toLowerCase())) {
+          Toast.show({ type: "error", text1: `"${extName.trim()}" is already in the team` });
           setSaving(false);
           return;
         }
@@ -887,7 +906,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28, borderTopRightRadius: 28, marginTop: -20,
   },
   tabRow: {
-    paddingHorizontal: 20, paddingVertical: 16, gap: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 8,
   },
   tabPill: {
     paddingHorizontal: 16, paddingVertical: 8,
@@ -961,6 +984,12 @@ const styles = StyleSheet.create({
   emptySubText: { fontSize: 12, color: "#CBD5E1", textAlign: "center" },
 
   // Finance
+  warnBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#FEF3C7", borderRadius: 10, padding: 12, marginBottom: 10,
+    borderWidth: 1, borderColor: "#FDE68A",
+  },
+  warnBannerText: { flex: 1, fontSize: 12, fontFamily: font.medium, color: "#92400E" },
   financeCards: { flexDirection: "row", gap: 8 },
   financeCard: {
     flex: 1, backgroundColor: "#F8FAFC", borderRadius: 14,

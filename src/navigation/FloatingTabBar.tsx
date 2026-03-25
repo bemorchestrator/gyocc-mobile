@@ -12,7 +12,7 @@ const TAB_ICONS: Record<string, { focused: IoniconsName; unfocused: IoniconsName
   Home:      { focused: "home",          unfocused: "home-outline" },
   Gigs:      { focused: "musical-notes", unfocused: "musical-notes-outline" },
   Equipment: { focused: "cube",          unfocused: "cube-outline" },
-  Loans:     { focused: "receipt",       unfocused: "receipt-outline" },
+  Members:   { focused: "people",        unfocused: "people-outline" },
   Profile:   { focused: "person",        unfocused: "person-outline" },
 };
 

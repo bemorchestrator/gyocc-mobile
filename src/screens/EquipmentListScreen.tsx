@@ -31,7 +31,7 @@ export default function EquipmentListScreen({ navigation }: Props) {
   const [tab, setTab] = useState<"all" | "available">("all");
   const queryClient = useQueryClient();
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
     queryKey: ["equipment"],
     queryFn: () => listEquipment(),
   });
@@ -79,6 +79,15 @@ export default function EquipmentListScreen({ navigation }: Props) {
   );
 
   if (isLoading) return <LoadingSpinner />;
+  if (isError) return (
+    <View style={{ flex: 1, backgroundColor: TEAL, alignItems: "center", justifyContent: "center", gap: 12 }}>
+      <Ionicons name="cloud-offline-outline" size={44} color="rgba(255,255,255,0.5)" />
+      <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 14, fontFamily: "System" }}>Failed to load equipment</Text>
+      <TouchableOpacity onPress={() => refetch()} style={{ backgroundColor: "#fff", borderRadius: 20, paddingHorizontal: 20, paddingVertical: 10 }}>
+        <Text style={{ color: TEAL, fontSize: 14, fontWeight: "700" }}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <View style={styles.root}>

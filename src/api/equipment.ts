@@ -38,3 +38,21 @@ export async function getEquipmentLoans(
   const { data } = await client.get(`/api/equipment/${id}/loans`);
   return Array.isArray(data) ? data : data.loans || data.data || [];
 }
+
+export async function uploadEquipmentImage(
+  id: string,
+  uri: string,
+  mimeType: string = "image/jpeg"
+): Promise<string> {
+  const form = new FormData();
+  const filename = uri.split("/").pop() ?? "photo.jpg";
+  form.append("image", { uri, name: filename, type: mimeType } as any);
+  const { data } = await client.post(`/api/equipment/${id}/image`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data.imageUrl;
+}
+
+export async function deleteEquipmentImage(id: string): Promise<void> {
+  await client.delete(`/api/equipment/${id}/image`);
+}

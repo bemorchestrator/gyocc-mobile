@@ -67,5 +67,5 @@ client.interceptors.response.use(
   }
 );
 
-export { COOKIE_KEY };
+export { COOKIE_KEY, BASE_URL };
 export default client;

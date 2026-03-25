@@ -97,6 +97,11 @@ export default function AddEditGigScreen({ route, navigation }: Props) {
       Toast.show({ type: "error", text1: "Start date is required" });
       return;
     }
+    // Fix #1: endDate must not be before startDate
+    if (endDate && new Date(endDate) < new Date(startDate)) {
+      Toast.show({ type: "error", text1: "End date cannot be before start date" });
+      return;
+    }
 
     mutation.mutate({
       title: title.trim(),

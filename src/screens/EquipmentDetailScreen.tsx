@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,17 +6,21 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { getEquipment, deleteEquipment, getEquipmentLoans } from "../api/equipment";
+import * as ImagePicker from "expo-image-picker";
+import { getEquipment, deleteEquipment, getEquipmentLoans, uploadEquipmentImage, deleteEquipmentImage } from "../api/equipment";
 import LoanCard from "../components/LoanCard";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { formatDate } from "../utils/formatDate";
 import Toast from "react-native-toast-message";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { font } from '../constants/fonts';
+import { BASE_URL } from "../api/client";
 
 const TEAL = "#0D9488";
 
@@ -49,6 +53,51 @@ export default function EquipmentDetailScreen({ route, navigation }: Props) {
     },
   });
 
+  const uploadImageMutation = useMutation({
+    mutationFn: ({ uri, mimeType }: { uri: string; mimeType: string }) =>
+      uploadEquipmentImage(id, uri, mimeType),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["equipment", id] });
+      Toast.show({ type: "success", text1: "Image updated" });
+    },
+    onError: (err: Error) => {
+      Toast.show({ type: "error", text1: "Upload failed", text2: err.message });
+    },
+  });
+
+  const removeImageMutation = useMutation({
+    mutationFn: () => deleteEquipmentImage(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["equipment", id] });
+      Toast.show({ type: "success", text1: "Image removed" });
+    },
+  });
+
+  async function pickImage() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Toast.show({ type: "error", text1: "Permission denied", text2: "Allow photo access to upload images" });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      uploadImageMutation.mutate({ uri: asset.uri, mimeType: asset.mimeType ?? "image/jpeg" });
+    }
+  }
+
+  function confirmRemoveImage() {
+    Alert.alert("Remove Image", "Remove the photo for this equipment?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: () => removeImageMutation.mutate() },
+    ]);
+  }
+
   function confirmDelete() {
     Alert.alert("Delete Equipment", "Are you sure? This cannot be undone.", [
       { text: "Cancel", style: "cancel" },
@@ -71,7 +120,7 @@ export default function EquipmentDetailScreen({ route, navigation }: Props) {
         <View style={styles.iconCircle}>
           <Ionicons name="cube-outline" size={36} color={TEAL} />
         </View>
-        <Text style={styles.heroName}>{equipment.name}</Text>
+        <Text style={styles.heroName} numberOfLines={2}>{equipment.name}</Text>
         <View style={styles.heroBadgeRow}>
           <View style={[styles.heroBadge, { backgroundColor: available ? "rgba(255,255,255,0.25)" : "rgba(239,68,68,0.35)" }]}>
             <Ionicons
@@ -116,6 +165,41 @@ export default function EquipmentDetailScreen({ route, navigation }: Props) {
           ) : null}
         </View>
 
+        {/* ── Equipment Image ── */}
+        <Text style={styles.sectionTitle}>Photo</Text>
+        {equipment.imageUrl ? (
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: `${BASE_URL}${equipment.imageUrl}` }}
+              style={styles.equipmentImage}
+              resizeMode="cover"
+            />
+            <View style={styles.imageActions}>
+              <TouchableOpacity style={styles.imageBtn} onPress={pickImage} disabled={uploadImageMutation.isPending}>
+                {uploadImageMutation.isPending
+                  ? <ActivityIndicator size="small" color={TEAL} />
+                  : <><Ionicons name="refresh-outline" size={16} color={TEAL} /><Text style={styles.imageBtnText}>Change</Text></>
+                }
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.imageBtn, styles.imageBtnDanger]} onPress={confirmRemoveImage}>
+                <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                <Text style={[styles.imageBtnText, { color: "#EF4444" }]}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.imagePlaceholder} onPress={pickImage} disabled={uploadImageMutation.isPending}>
+            {uploadImageMutation.isPending ? (
+              <ActivityIndicator size="large" color={TEAL} />
+            ) : (
+              <>
+                <Ionicons name="camera-outline" size={36} color="#94A3B8" />
+                <Text style={styles.imagePlaceholderText}>Tap to add a photo</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+
         {/* Action buttons */}
         <View style={styles.btnRow}>
           <TouchableOpacity
@@ -126,11 +210,14 @@ export default function EquipmentDetailScreen({ route, navigation }: Props) {
             <Text style={styles.outlineBtnText}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.primaryBtn}
+            style={[styles.primaryBtn, equipment.availableQty === 0 && styles.primaryBtnDisabled]}
             onPress={() => navigation.navigate("CreateLoan", { equipmentId: equipment._id })}
+            disabled={equipment.availableQty === 0}
           >
             <Ionicons name="clipboard-outline" size={18} color="#fff" />
-            <Text style={styles.primaryBtnText}>New Loan</Text>
+            <Text style={styles.primaryBtnText}>
+              {equipment.availableQty === 0 ? "Out of Stock" : "New Loan"}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -221,6 +308,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: -0.3,
     marginBottom: 10,
+    paddingHorizontal: 16,
   },
   heroBadgeRow: {
     flexDirection: "row",
@@ -327,10 +415,73 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  primaryBtnDisabled: {
+    backgroundColor: "#94A3B8",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   primaryBtnText: {
     color: "#FFFFFF",
     fontSize: 15,
     fontFamily: font.bold,
+  },
+
+  // Image
+  imageContainer: {
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  equipmentImage: {
+    width: "100%",
+    height: 220,
+  },
+  imageActions: {
+    flexDirection: "row",
+    gap: 12,
+    padding: 12,
+    backgroundColor: "#F8FAFC",
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+  },
+  imageBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: TEAL,
+  },
+  imageBtnDanger: {
+    borderColor: "#FECACA",
+    backgroundColor: "#FEF2F2",
+  },
+  imageBtnText: {
+    fontSize: 14,
+    fontFamily: font.semiBold,
+    color: TEAL,
+  },
+  imagePlaceholder: {
+    height: 160,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 20,
+    backgroundColor: "#F8FAFC",
+  },
+  imagePlaceholderText: {
+    fontSize: 14,
+    fontFamily: font.medium,
+    color: "#94A3B8",
   },
 
   // Delete

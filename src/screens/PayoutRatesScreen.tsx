@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,7 @@ function peso(n: number) {
 export default function PayoutRatesScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
 
-  const { data: rates = [], isLoading } = useQuery({
+  const { data: rates = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["payout-rates"],
     queryFn: listPayoutRates,
   });
@@ -65,6 +65,7 @@ export default function PayoutRatesScreen({ navigation }: Props) {
         style={styles.sheet}
         contentContainerStyle={styles.sheetContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={TEAL} />}
       >
         {Object.keys(grouped).length === 0 ? (
           <View style={styles.empty}>
