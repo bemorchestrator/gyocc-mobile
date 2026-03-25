@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "GYOCC",
+    "slug": "gyocc-mobile",
+    "scheme": "gyocc",
+    "owner": "falcon-media-australia",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/gyocc-logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/gyocc-logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.gyocc.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/gyocc-logo.png",
+        "backgroundColor": "#0F172A"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0bb97f0f-a1a5-4822-bf10-543d5c87542c"
+      }
+    }
+  }
+}
