@@ -1,9 +1,9 @@
 {
   "expo": {
     "name": "GYOCC",
-    "slug": "gyocc-mobile",
+    "slug": "gyocc",
     "scheme": "gyocc",
-    "owner": "falcon-media-australia",
+    "owner": "adminbem",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/gyocc-logo.png",
@@ -25,7 +25,8 @@
         "foregroundImage": "./assets/gyocc-logo.png",
         "backgroundColor": "#0F172A"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "org.gyocc.mobile"
     },
     "web": {
       "favicon": "./assets/favicon.png"
