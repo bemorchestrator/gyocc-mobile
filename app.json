@@ -33,7 +33,14 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow GYOCC to access your photos to upload images.",
+          "cameraPermission": "Allow GYOCC to access your camera."
+        }
+      ]
     ],
     "extra": {
       "eas": {
