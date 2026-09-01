@@ -12,12 +12,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Controller, useForm } from "react-hook-form";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/AuthContext";
+import WelcomeBackdrop from "../components/WelcomeBackdrop";
 import { font } from "../constants/fonts";
 
 const BG = "#840016";
@@ -29,43 +29,46 @@ const MUTED = "#8A7E78";
 const PRIMARY = "#840016";
 const ON_PRIMARY = "#F4F5F0";
 
-// Cream at the top so the dark wordmark stays readable, clearing through the
-// middle to reveal the choir, then settling into maroon behind the form.
-const SCRIM_COLORS = [
-  HEADER,
-  "rgba(241,240,236,.97)",
-  "rgba(241,240,236,.14)",
-  "rgba(132,0,22,.34)",
-  "rgba(132,0,22,.88)",
-  BG,
-  "#66000F",
-] as const;
-const SCRIM_STOPS = [0, .15, .25, .35, .44, .54, 1] as const;
 
 interface FormData {
+  name: string;
   email: string;
   password: string;
+  confirm: string;
 }
 
-export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
-  const { login } = useAuth();
+export default function RegisterScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
+  const { register } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
-    defaultValues: { email: "", password: "" },
+  const { control, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+    defaultValues: { name: "", email: "", password: "", confirm: "" },
   });
+  const password = watch("password");
 
   async function onSubmit(data: FormData) {
     setLoading(true);
     try {
-      await login(data.email.trim(), data.password);
+      const outcome = await register(data.name.trim(), data.email.trim(), data.password);
+      if (outcome === "needs-verification") {
+        Toast.show({ type: "success", text1: "Check your email", text2: "Confirm your address, then log in." });
+        navigation.navigate("Login");
+      } else if (outcome === "awaiting-access") {
+        Toast.show({
+          type: "success",
+          text1: "Account created",
+          text2: "Your conductor needs to grant access before you can sign in.",
+        });
+        navigation.navigate("Login");
+      }
+      // On "signed-in" the session is live and the navigator swaps to the app itself.
     } catch (err: unknown) {
       Toast.show({
         type: "error",
-        text1: "Login failed",
-        text2: (err as { message?: string })?.message || "Invalid credentials",
+        text1: "Could not create account",
+        text2: (err as { message?: string })?.message || "Please try again",
       });
     } finally {
       setLoading(false);
@@ -75,8 +78,7 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
-      <Image source={require("../../assets/login-backdrop.jpg")} style={styles.backdrop} resizeMode="cover" />
-      <LinearGradient colors={SCRIM_COLORS} locations={SCRIM_STOPS} style={styles.backdrop} pointerEvents="none" />
+      <WelcomeBackdrop />
 
       <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === "ios" ? "padding" : "height"}>
         <ScrollView
@@ -94,14 +96,33 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
             <Image source={require("../../assets/portal-logo-transparent.png")} style={styles.logo} resizeMode="contain" />
           </View>
 
-          {/* Uncovered band where the circle of singers reads through. */}
-          <View style={{ height: Math.max(124, height * .21) }} />
+          <View style={{ height: Math.max(96, height * .15) }} />
 
           <View style={styles.panel}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>Sign in to continue to your music family.</Text>
+            <Text style={styles.title}>Create account</Text>
+            <Text style={styles.subtitle}>Set up your sign-in. Your conductor assigns your section and access.</Text>
 
             <View style={styles.form}>
+              <Controller
+                control={control}
+                name="name"
+                rules={{ required: "Name is required", minLength: { value: 2, message: "Enter your full name" } }}
+                render={({ field: { onChange, value } }) => (
+                  <View>
+                    <Text style={styles.inputLabel}>Full name</Text>
+                    <TextInput
+                      style={[styles.input, errors.name && styles.inputError]}
+                      placeholder="Juan dela Cruz"
+                      placeholderTextColor={MUTED}
+                      value={value}
+                      onChangeText={onChange}
+                      autoCapitalize="words"
+                    />
+                  </View>
+                )}
+              />
+              {errors.name ? <Text style={styles.error}>{errors.name.message}</Text> : null}
+
               <Controller
                 control={control}
                 name="email"
@@ -130,14 +151,17 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
               <Controller
                 control={control}
                 name="password"
-                rules={{ required: "Password is required" }}
+                rules={{
+                  required: "Password is required",
+                  minLength: { value: 8, message: "Use at least 8 characters" },
+                }}
                 render={({ field: { onChange, value } }) => (
                   <View>
                     <Text style={styles.inputLabel}>Password</Text>
                     <View style={[styles.passwordField, errors.password && styles.inputError]}>
                       <TextInput
                         style={styles.passwordInput}
-                        placeholder="Enter your password"
+                        placeholder="At least 8 characters"
                         placeholderTextColor={MUTED}
                         value={value}
                         onChangeText={onChange}
@@ -152,18 +176,37 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
               />
               {errors.password ? <Text style={styles.error}>{errors.password.message}</Text> : null}
 
-              <View style={styles.optionsRow}>
-                <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-                  <Text style={styles.link}>Forgot password?</Text>
-                </TouchableOpacity>
-              </View>
+              <Controller
+                control={control}
+                name="confirm"
+                rules={{
+                  required: "Confirm your password",
+                  validate: (value) => value === password || "Passwords do not match",
+                }}
+                render={({ field: { onChange, value } }) => (
+                  <View>
+                    <Text style={styles.inputLabel}>Confirm password</Text>
+                    <TextInput
+                      style={[styles.input, errors.confirm && styles.inputError]}
+                      placeholder="Re-enter your password"
+                      placeholderTextColor={MUTED}
+                      value={value}
+                      onChangeText={onChange}
+                      secureTextEntry={!showPassword}
+                    />
+                  </View>
+                )}
+              />
+              {errors.confirm ? <Text style={styles.error}>{errors.confirm.message}</Text> : null}
 
               <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
-                <Text style={styles.primaryBtnText}>{loading ? "Signing in…" : "Sign in"}</Text>
+                <Text style={styles.primaryBtnText}>{loading ? "Creating account…" : "Create account"}</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.footer}>Need an account? Ask your conductor or section admin.</Text>
+            <TouchableOpacity style={styles.footerLink} onPress={() => navigation.navigate("Login")}>
+              <Text style={styles.footer}>Already have an account? Log in</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -174,7 +217,6 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
   fill: { flex: 1 },
-  backdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
   scroll: { flexGrow: 1, paddingHorizontal: 26 },
   topBar: { height: 40, justifyContent: "center" },
   back: { width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(132,0,22,.09)", alignItems: "center", justifyContent: "center" },
@@ -192,9 +234,8 @@ const styles = StyleSheet.create({
   show: { color: PRIMARY, fontSize: 12, fontFamily: font.bold },
   inputError: { backgroundColor: "#E8D7D8" },
   error: { color: "#FFC9CE", fontSize: 11, fontFamily: font.medium, marginTop: -8, marginLeft: 3 },
-  optionsRow: { alignItems: "flex-end", marginTop: -2 },
-  link: { color: ON_PRIMARY, fontSize: 12, fontFamily: font.semiBold },
   primaryBtn: { height: 56, borderRadius: 16, backgroundColor: HEADER, alignItems: "center", justifyContent: "center", marginTop: 5, shadowColor: "#2E0008", shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
   primaryBtnText: { color: PRIMARY, fontSize: 14, fontFamily: font.bold },
-  footer: { color: ON_PRIMARY, opacity: 0.72, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 27 },
+  footerLink: { marginTop: 24, alignSelf: "center" },
+  footer: { color: ON_PRIMARY, opacity: 0.78, fontSize: 12, lineHeight: 17, fontFamily: font.semiBold, textAlign: "center" },
 });

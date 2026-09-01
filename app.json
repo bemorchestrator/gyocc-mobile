@@ -8,26 +8,27 @@
     "orientation": "portrait",
     "icon": "./assets/gyocc-logo.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/gyocc-logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "org.gyocc.mobile",
+      "bundleIdentifier": "org.gyocc.official",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Allow GYOCC to use your location when confirming clock-in and clock-out.",
+        "NSLocalNetworkUsageDescription": "Allow GYOCC to connect to the local development server on this network."
       },
-      "buildNumber": "2"
+      "entitlements": {
+        "aps-environment": "production"
+      },
+      "buildNumber": "10"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/gyocc-logo.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "org.gyocc.mobile"
+      "package": "com.gyocc.official",
+      "versionCode": 8
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,15 +36,37 @@
     "plugins": [
       "expo-secure-store",
       "expo-font",
+      "expo-notifications",
       [
         "expo-image-picker",
         {
           "photosPermission": "Allow GYOCC to access your photos to upload images.",
           "cameraPermission": "Allow GYOCC to access your camera."
         }
+      ],
+      "expo-web-browser",
+      "expo-sharing",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow GYOCC to use your location to verify that you are at the venue when clocking in."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/gyocc-logo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
+        }
       ]
     ],
     "extra": {
+      "googleClientId": "775508410511-c3dj56ui64q5jump3ivfm1e9dd9l5gdo.apps.googleusercontent.com",
+      "googleWebClientId": "775508410511-c3dj56ui64q5jump3ivfm1e9dd9l5gdo.apps.googleusercontent.com",
+      "googleIosClientId": "",
+      "googleAndroidClientId": "",
       "eas": {
         "projectId": "0bb97f0f-a1a5-4822-bf10-543d5c87542c"
       }

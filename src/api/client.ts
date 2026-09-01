@@ -1,38 +1,31 @@
 import axios from "axios";
-import * as SecureStore from "expo-secure-store";
-import Constants from "expo-constants";
+import { getSessionValue, setSessionValue } from "../utils/sessionStorage";
+import { BASE_URL, COOKIE_KEY } from "./config";
 
-// Dynamically resolve the dev machine's IP from Expo's debuggerHost
-const getBaseUrl = () => {
-  if (__DEV__) {
-    const debuggerHost =
-      Constants.expoConfig?.hostUri ?? Constants.manifest2?.extra?.expoGo?.debuggerHost;
-    const host = debuggerHost?.split(":")[0];
-    if (host) return `http://${host}:5001`;
-    return "http://localhost:5001";
-  }
-  return "https://api.gyocc.org";
-};
 
-const BASE_URL = getBaseUrl();
-const COOKIE_KEY = "gyocc_session_cookie";
+if (__DEV__) {
+  console.log(`[API] Base URL ${BASE_URL}`);
+}
 
 const client = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
+    Origin: BASE_URL,
   },
 });
 
 // Inject stored session cookie on every request
 client.interceptors.request.use(async (config) => {
-  const cookie = await SecureStore.getItemAsync(COOKIE_KEY);
+  const cookie = await getSessionValue(COOKIE_KEY);
   if (cookie) {
     config.headers["Cookie"] = cookie;
+    config.headers["X-GYOCC-Session-Cookie"] = cookie;
   }
   if (__DEV__) {
-    console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
+    const requestUrl = `${config.baseURL ?? BASE_URL}${config.url ?? ""}`;
+    console.log(`[API] ${config.method?.toUpperCase()} ${requestUrl}`);
   }
   return config;
 });
@@ -48,18 +41,19 @@ client.interceptors.response.use(
         .filter((c: string) => c.startsWith("gyocc.session_token="))
         .join("; ");
       if (sessionCookie) {
-        await SecureStore.setItemAsync(COOKIE_KEY, sessionCookie);
+        await setSessionValue(COOKIE_KEY, sessionCookie);
       }
     }
     return response;
   },
   (error) => {
+    const skipErrorLog = Boolean((error.config as { skipErrorLog?: boolean } | undefined)?.skipErrorLog);
     const message =
       error.response?.data?.message ||
       error.response?.data?.error ||
       error.message ||
       "Something went wrong";
-    if (__DEV__) {
+    if (__DEV__ && !skipErrorLog) {
       console.error(`[API Error] ${error.response?.status}: ${message}`);
     }
     return Promise.reject({ message, status: error.response?.status });

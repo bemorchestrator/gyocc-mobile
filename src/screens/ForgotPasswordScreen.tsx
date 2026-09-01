@@ -1,143 +1,134 @@
 import React, { useState } from "react";
 import {
-  View,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  View,
 } from "react-native";
-import { useForm, Controller } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { forgotPassword } from "../api/auth";
-import { font } from '../constants/fonts';
+import { font } from "../constants/fonts";
 
-const TEAL = "#0D9488";
+const BG = "#F1F0EC";
+const PANEL = "#F4F5F0";
+const BORDER = "rgba(54,68,90,.16)";
+const INK = "#111527";
+const MUTED = "#587284";
+const PRIMARY = "#840016";
+const PRIMARY_DARK = "#F4F5F0";
+const GOLD = "#840016";
 
 interface FormData {
   email: string;
 }
 
-export default function ForgotPasswordScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
+export default function ForgotPasswordScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-
-  const { control, handleSubmit, formState: { errors }, getValues } = useForm<FormData>({
+  const { control, handleSubmit, getValues, formState: { errors } } = useForm<FormData>({
     defaultValues: { email: "" },
   });
 
   async function onSubmit(data: FormData) {
     setLoading(true);
     try {
-      await forgotPassword(data.email);
+      await forgotPassword(data.email.trim());
       setSent(true);
     } catch (err: unknown) {
       Toast.show({
         type: "error",
         text1: "Request failed",
-        text2: err instanceof Error ? err.message : "Could not send reset email",
+        text2: (err as { message?: string })?.message || "Could not send reset email",
       });
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        {/* Teal header */}
-        <View style={styles.banner}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={22} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.title}>Forgot Password</Text>
-          <Text style={styles.subtitle}>
-            Enter your email and we'll send you a reset link
+  if (sent) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.successWrap}>
+          <View style={styles.successOuter}>
+            <View style={styles.successInner}>
+              <Ionicons name="mail-outline" size={40} color={PRIMARY} />
+            </View>
+          </View>
+          <Text style={styles.successTitle}>Check your email</Text>
+          <Text style={styles.successBody}>
+            We sent a reset link to{"\n"}
+            <Text style={styles.emailStrong}>{getValues("email")}</Text>
           </Text>
+          <View style={styles.notice}>
+            <Ionicons name="time-outline" size={15} color={GOLD} />
+            <Text style={styles.noticeText}>Link expires in 30 minutes</Text>
+          </View>
         </View>
+        <View style={styles.bottom}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => Linking.openURL("message://").catch(() => undefined)}>
+            <Text style={styles.primaryBtnText}>Open email app</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSubmit(onSubmit)}>
+            <Text style={styles.resend}>Didn't get it? Resend</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backMuted}>Back to login</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-        {/* Card */}
-        <View style={styles.card}>
-          {!sent ? (
-            <>
-              <Text style={styles.label}>Email Address</Text>
-              <Controller
-                control={control}
-                name="email"
-                rules={{
-                  required: "Email is required",
-                  pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email" },
-                }}
-                render={({ field: { onChange, value } }) => (
-                  <TextInput
-                    style={[styles.input, errors.email && styles.inputError]}
-                    placeholder="email@gmail.com"
-                    placeholderTextColor="#A0AEC0"
-                    value={value}
-                    onChangeText={onChange}
-                    autoCapitalize="none"
-                    keyboardType="email-address"
-                    autoCorrect={false}
-                  />
-                )}
+  return (
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color="#5F7069" />
+        </TouchableOpacity>
+        <View style={styles.iconBox}>
+          <Ionicons name="lock-closed-outline" size={34} color={PRIMARY} />
+        </View>
+        <Text style={styles.title}>Forgot password?</Text>
+        <Text style={styles.subtitle}>Enter the email linked to your membership and we'll send you a secure reset link.</Text>
+
+        <Text style={styles.label}>Email</Text>
+        <Controller
+          control={control}
+          name="email"
+          rules={{
+            required: "Email is required",
+            pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email" },
+          }}
+          render={({ field: { onChange, value } }) => (
+            <View style={[styles.inputRow, errors.email && styles.inputError]}>
+              <Ionicons name="mail-outline" size={18} color="#8A9A94" />
+              <TextInput
+                style={styles.input}
+                value={value}
+                onChangeText={onChange}
+                placeholder="andrea.salcedo@gyocc.org"
+                placeholderTextColor="#8A9A94"
+                autoCapitalize="none"
+                keyboardType="email-address"
               />
-              {errors.email && (
-                <Text style={styles.errorText}>{errors.email.message}</Text>
-              )}
-
-              <TouchableOpacity
-                style={[styles.btn, loading && styles.btnDisabled]}
-                onPress={handleSubmit(onSubmit)}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.btnText}>
-                  {loading ? "Sending…" : "Send Reset Link"}
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            /* Success state */
-            <View style={styles.successContainer}>
-              <View style={styles.successIcon}>
-                <Ionicons name="mail-outline" size={40} color={TEAL} />
-              </View>
-              <Text style={styles.successTitle}>Check your inbox</Text>
-              <Text style={styles.successBody}>
-                A password reset link has been sent to{"\n"}
-                <Text style={styles.successEmail}>{getValues("email")}</Text>
-              </Text>
-              <TouchableOpacity
-                style={[styles.btn, { marginTop: 24 }]}
-                onPress={() => navigation.navigate("ResetPassword")}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.btnText}>Enter Reset Code</Text>
-              </TouchableOpacity>
             </View>
           )}
+        />
+        {errors.email ? <Text style={styles.error}>{errors.email.message}</Text> : null}
 
-          <TouchableOpacity
-            style={styles.backToLogin}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back-outline" size={14} color={TEAL} />
-            <Text style={styles.backToLoginText}>Back to Login</Text>
+        <View style={styles.bottom}>
+          <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
+            <Text style={styles.primaryBtnText}>{loading ? "Sending..." : "Send reset link"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.backLink}>Back to login</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -146,123 +137,29 @@ export default function ForgotPasswordScreen({ navigation }: { navigation: { nav
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: TEAL },
-  scroll: { flexGrow: 1 },
-
-  banner: {
-    backgroundColor: TEAL,
-    paddingTop: 64,
-    paddingBottom: 80,
-    paddingHorizontal: 28,
-  },
-  backBtn: {
-    marginBottom: 20,
-    alignSelf: "flex-start",
-  },
-  title: {
-    fontSize: 28,
-    fontFamily: font.bold,
-    color: "#fff",
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
-    marginTop: 8,
-    lineHeight: 20,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 20,
-    borderRadius: 24,
-    padding: 28,
-    marginTop: -40,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  label: {
-    fontSize: 14,
-    fontFamily: font.bold,
-    color: TEAL,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: "#1A202C",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  inputError: { borderColor: "#EF4444" },
-  errorText: {
-    color: "#EF4444",
-    fontSize: 12,
-    marginTop: -10,
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-  btn: {
-    backgroundColor: TEAL,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: "center",
-    shadowColor: TEAL,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontFamily: font.bold,
-    letterSpacing: 0.5,
-  },
-
-  // Success state
-  successContainer: { alignItems: "center", paddingVertical: 12 },
-  successIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "#F0FDFA",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  successTitle: {
-    fontSize: 20,
-    fontFamily: font.bold,
-    color: "#1A202C",
-    marginBottom: 10,
-  },
-  successBody: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  successEmail: { fontFamily: font.bold, color: "#1A202C" },
-
-  backToLogin: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 20,
-  },
-  backToLoginText: {
-    fontSize: 13,
-    color: TEAL,
-    fontFamily: font.semiBold,
-  },
+  root: { flex: 1, backgroundColor: BG },
+  scroll: { flexGrow: 1, paddingHorizontal: 30, paddingTop: 14, paddingBottom: 26 },
+  backBtn: { width: 42, height: 42, borderRadius: 13, backgroundColor: PANEL, borderWidth: 1.5, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
+  iconBox: { width: 72, height: 72, borderRadius: 22, backgroundColor: "#F1F0EC", alignItems: "center", justifyContent: "center", marginTop: 26 },
+  title: { color: INK, fontSize: 24, fontFamily: font.extraBold, letterSpacing: -0.5, marginTop: 20 },
+  subtitle: { color: MUTED, fontSize: 14, lineHeight: 22, marginTop: 8 },
+  label: { color: "#54655F", fontSize: 12.5, fontFamily: font.bold, marginTop: 24, marginBottom: 7 },
+  inputRow: { height: 52, borderWidth: 1.5, borderColor: BORDER, borderRadius: 14, backgroundColor: PANEL, flexDirection: "row", alignItems: "center", paddingHorizontal: 15, gap: 10 },
+  input: { flex: 1, color: INK, fontSize: 15, fontFamily: font.medium, paddingVertical: 0 },
+  inputError: { borderColor: "#D64545" },
+  error: { color: "#D64545", fontSize: 12, marginTop: 7 },
+  bottom: { marginTop: "auto", paddingTop: 22 },
+  primaryBtn: { height: 54, borderRadius: 16, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
+  primaryBtnText: { color: PRIMARY_DARK, fontSize: 16, fontFamily: font.bold },
+  backLink: { color: PRIMARY, fontSize: 13.5, fontFamily: font.bold, textAlign: "center", marginTop: 18 },
+  backMuted: { color: "#8A9A94", fontSize: 13.5, fontFamily: font.bold, textAlign: "center", marginTop: 14 },
+  successWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 30 },
+  successOuter: { width: 104, height: 104, borderRadius: 52, backgroundColor: "#E4E8EA", alignItems: "center", justifyContent: "center" },
+  successInner: { width: 74, height: 74, borderRadius: 37, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
+  successTitle: { color: INK, fontSize: 24, fontFamily: font.extraBold, letterSpacing: -0.5, marginTop: 26 },
+  successBody: { color: MUTED, fontSize: 14, lineHeight: 23, textAlign: "center", marginTop: 10 },
+  emailStrong: { color: INK, fontFamily: font.bold },
+  notice: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(201,138,18,.16)", borderRadius: 12, paddingVertical: 11, paddingHorizontal: 16, marginTop: 18 },
+  noticeText: { color: GOLD, fontSize: 12.5, fontFamily: font.semiBold },
+  resend: { color: MUTED, fontSize: 13, textAlign: "center", marginTop: 16 },
 });

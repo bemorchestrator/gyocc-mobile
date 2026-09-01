@@ -7,25 +7,31 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "node": "22.14.0",
       "ios": {
         "simulator": false
       }
     },
     "preview": {
       "distribution": "internal",
+      "node": "22.14.0",
       "ios": {
         "simulator": true
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "node": "22.14.0"
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "6761112649",
-        "appleTeamId": "CF2R28L757"
+        "ascAppId": "6786160711",
+        "appleTeamId": "CF2R28L757",
+        "ascApiKeyPath": "./credentials/AuthKey_4QSLSX9YT7.p8",
+        "ascApiKeyId": "4QSLSX9YT7",
+        "ascApiKeyIssuerId": "4436a09e-c6e1-4c88-a40c-6f45b11eb67a"
       }
     }
   }

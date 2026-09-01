@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { getSession, signIn, signOut } from "../api/auth";
+import { getSession, signIn, signInWithGoogle, signOut, signUp } from "../api/auth";
+import type { SignUpOutcome } from "../api/auth";
 import { User } from "../types";
 import Toast from "react-native-toast-message";
 
@@ -8,6 +9,8 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<SignUpOutcome>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -16,6 +19,8 @@ const AuthContext = createContext<AuthState>({
   isLoading: true,
   isAuthenticated: false,
   login: async () => {},
+  register: async () => "signed-in" as SignUpOutcome,
+  loginWithGoogle: async () => {},
   logout: async () => {},
 });
 
@@ -45,6 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   }
 
+  async function register(name: string, email: string, password: string) {
+    const result = await signUp(name, email, password);
+    if (result.user) setUser(result.user);
+    return result.outcome;
+  }
+
+  async function loginWithGoogle() {
+    const result = await signInWithGoogle();
+    setUser(result.user);
+  }
+
   async function logout() {
     try {
       await signOut();
@@ -62,6 +78,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        register,
+        loginWithGoogle,
         logout,
       }}
     >

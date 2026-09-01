@@ -1,21 +1,27 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { useForm, Controller } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import { resetPassword } from "../api/auth";
-import { font } from '../constants/fonts';
+import { font } from "../constants/fonts";
 
-const TEAL = "#0D9488";
+const BG = "#F1F0EC";
+const PANEL = "#F4F5F0";
+const BORDER = "rgba(54,68,90,.16)";
+const INK = "#111527";
+const MUTED = "#587284";
+const PRIMARY = "#840016";
+const PRIMARY_DARK = "#F4F5F0";
 
 interface FormData {
   token: string;
@@ -23,14 +29,14 @@ interface FormData {
   confirmPassword: string;
 }
 
-export default function ResetPasswordScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
+export default function ResetPasswordScreen({ navigation, route }: { navigation: { navigate: (screen: string) => void; goBack: () => void }; route?: { params?: { token?: string } } }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-
+  const linkedToken = route?.params?.token?.trim() ?? "";
   const { control, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
-    defaultValues: { token: "", newPassword: "", confirmPassword: "" },
+    defaultValues: { token: linkedToken, newPassword: "", confirmPassword: "" },
   });
 
   async function onSubmit(data: FormData) {
@@ -42,247 +48,147 @@ export default function ResetPasswordScreen({ navigation }: { navigation: { navi
       Toast.show({
         type: "error",
         text1: "Reset failed",
-        text2: err instanceof Error ? err.message : "Invalid or expired token",
+        text2: (err as { message?: string })?.message || "Invalid or expired token",
       });
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={false}
-      >
-        {/* Teal header */}
-        <View style={styles.banner}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={22} color="#fff" />
+  if (done) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.successWrap}>
+          <View style={styles.successOuter}>
+            <View style={styles.successInner}>
+              <Ionicons name="checkmark" size={42} color={PRIMARY} />
+            </View>
+          </View>
+          <Text style={styles.successTitle}>Password updated</Text>
+          <Text style={styles.successBody}>Your password has been changed.{"\n"}You can now sign in with your new password.</Text>
+        </View>
+        <View style={styles.bottom}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate("Login")}>
+            <Text style={styles.primaryBtnText}>Back to login</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Reset Password</Text>
-          <Text style={styles.subtitle}>
-            Paste the token from your reset email and choose a new password
-          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const password = watch("newPassword");
+  const strength = Math.min(4, Math.max(1, Math.ceil(password.length / 3)));
+
+  return (
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={22} color="#5F7069" />
+        </TouchableOpacity>
+        <Text style={styles.title}>Set a new password</Text>
+        <Text style={styles.subtitle}>{linkedToken ? "Choose a new password for your account." : "Enter the code from your email, then choose a new password."}</Text>
+
+        {!linkedToken ? <Field label="Reset code" error={errors.token?.message}>
+          <Controller
+            control={control}
+            name="token"
+            rules={{ required: "Reset code is required" }}
+            render={({ field: { onChange, value } }) => (
+              <TextInput
+                style={styles.input}
+                value={value}
+                onChangeText={onChange}
+                placeholder="7K2-9QX"
+                placeholderTextColor="#8A9A94"
+                autoCapitalize="none"
+              />
+            )}
+          />
+        </Field> : null}
+
+        <Field label="New password" error={errors.newPassword?.message}>
+          <View style={styles.inputWithIcon}>
+            <Ionicons name="lock-closed-outline" size={18} color="#8A9A94" />
+            <Controller
+              control={control}
+              name="newPassword"
+              rules={{ required: "Password is required", minLength: { value: 8, message: "Minimum 8 characters" } }}
+              render={({ field: { onChange, value } }) => (
+                <TextInput style={styles.inputFlex} value={value} onChangeText={onChange} secureTextEntry={!showNew} placeholder="New password" placeholderTextColor="#8A9A94" />
+              )}
+            />
+            <TouchableOpacity onPress={() => setShowNew((next) => !next)}>
+              <Ionicons name={showNew ? "eye-off-outline" : "eye-outline"} size={19} color={MUTED} />
+            </TouchableOpacity>
+          </View>
+        </Field>
+
+        <Field label="Confirm password" error={errors.confirmPassword?.message}>
+          <View style={[styles.inputWithIcon, password && !errors.confirmPassword ? { borderColor: PRIMARY } : null]}>
+            <Ionicons name="lock-closed-outline" size={18} color={password ? PRIMARY : "#8A9A94"} />
+            <Controller
+              control={control}
+              name="confirmPassword"
+              rules={{
+                required: "Please confirm your password",
+                validate: (value) => value === password || "Passwords do not match",
+              }}
+              render={({ field: { onChange, value } }) => (
+                <TextInput style={styles.inputFlex} value={value} onChangeText={onChange} secureTextEntry={!showConfirm} placeholder="Confirm password" placeholderTextColor="#8A9A94" />
+              )}
+            />
+            <TouchableOpacity onPress={() => setShowConfirm((next) => !next)}>
+              <Ionicons name={showConfirm ? "eye-off-outline" : "eye-outline"} size={19} color={MUTED} />
+            </TouchableOpacity>
+          </View>
+        </Field>
+
+        <View style={styles.strengthRow}>
+          {[1, 2, 3, 4].map((step) => <View key={step} style={[styles.strengthBar, step <= strength && { backgroundColor: PRIMARY }]} />)}
+          <Text style={styles.strengthText}>{strength >= 3 ? "Strong" : "Weak"}</Text>
         </View>
 
-        {/* Card */}
-        <View style={styles.card}>
-          {!done ? (
-            <>
-              {/* Token */}
-              <Text style={styles.label}>Reset Token</Text>
-              <Controller
-                control={control}
-                name="token"
-                rules={{ required: "Token is required" }}
-                render={({ field: { onChange, value } }) => (
-                  <TextInput
-                    style={[styles.input, errors.token && styles.inputError]}
-                    placeholder="Paste token from email"
-                    placeholderTextColor="#A0AEC0"
-                    value={value}
-                    onChangeText={onChange}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                )}
-              />
-              {errors.token && <Text style={styles.errorText}>{errors.token.message}</Text>}
-
-              {/* New password */}
-              <Text style={styles.label}>New Password</Text>
-              <Controller
-                control={control}
-                name="newPassword"
-                rules={{
-                  required: "Password is required",
-                  minLength: { value: 8, message: "Minimum 8 characters" },
-                }}
-                render={({ field: { onChange, value } }) => (
-                  <View style={[styles.inputRow, errors.newPassword && styles.inputError]}>
-                    <TextInput
-                      style={styles.inputInner}
-                      placeholder="••••••••"
-                      placeholderTextColor="#A0AEC0"
-                      value={value}
-                      onChangeText={onChange}
-                      secureTextEntry={!showNew}
-                    />
-                    <TouchableOpacity onPress={() => setShowNew(v => !v)} style={styles.eyeBtn}>
-                      <Ionicons name={showNew ? "eye-outline" : "eye-off-outline"} size={20} color="#A0AEC0" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-              {errors.newPassword && <Text style={styles.errorText}>{errors.newPassword.message}</Text>}
-
-              {/* Confirm password */}
-              <Text style={styles.label}>Confirm Password</Text>
-              <Controller
-                control={control}
-                name="confirmPassword"
-                rules={{
-                  required: "Please confirm your password",
-                  validate: (v) => v === watch("newPassword") || "Passwords do not match",
-                }}
-                render={({ field: { onChange, value } }) => (
-                  <View style={[styles.inputRow, errors.confirmPassword && styles.inputError]}>
-                    <TextInput
-                      style={styles.inputInner}
-                      placeholder="••••••••"
-                      placeholderTextColor="#A0AEC0"
-                      value={value}
-                      onChangeText={onChange}
-                      secureTextEntry={!showConfirm}
-                    />
-                    <TouchableOpacity onPress={() => setShowConfirm(v => !v)} style={styles.eyeBtn}>
-                      <Ionicons name={showConfirm ? "eye-outline" : "eye-off-outline"} size={20} color="#A0AEC0" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-              {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword.message}</Text>}
-
-              <TouchableOpacity
-                style={[styles.btn, loading && styles.btnDisabled]}
-                onPress={handleSubmit(onSubmit)}
-                disabled={loading}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.btnText}>{loading ? "Resetting…" : "Reset Password"}</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            /* Success */
-            <View style={styles.successContainer}>
-              <View style={styles.successIcon}>
-                <Ionicons name="checkmark-circle-outline" size={44} color={TEAL} />
-              </View>
-              <Text style={styles.successTitle}>Password Reset!</Text>
-              <Text style={styles.successBody}>
-                Your password has been updated successfully.
-              </Text>
-              <TouchableOpacity
-                style={[styles.btn, { marginTop: 24 }]}
-                onPress={() => navigation.navigate("Login")}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.btnText}>Back to Login</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!done && (
-            <TouchableOpacity
-              style={styles.backToLogin}
-              onPress={() => navigation.navigate("Login")}
-            >
-              <Ionicons name="arrow-back-outline" size={14} color={TEAL} />
-              <Text style={styles.backToLoginText}>Back to Login</Text>
-            </TouchableOpacity>
-          )}
+        <View style={styles.bottom}>
+          <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
+            <Text style={styles.primaryBtnText}>{loading ? "Resetting..." : "Reset password"}</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.fieldBlock}>
+      <Text style={styles.label}>{label}</Text>
+      {children}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: TEAL },
-  scroll: { flexGrow: 1 },
-
-  banner: {
-    backgroundColor: TEAL,
-    paddingTop: 64,
-    paddingBottom: 80,
-    paddingHorizontal: 28,
-  },
-  backBtn: { marginBottom: 20, alignSelf: "flex-start" },
-  title: { fontSize: 28, fontFamily: font.bold, color: "#fff", letterSpacing: 0.5 },
-  subtitle: { fontSize: 14, color: "rgba(255,255,255,0.8)", marginTop: 8, lineHeight: 20 },
-
-  card: {
-    backgroundColor: "#fff",
-    marginHorizontal: 20,
-    borderRadius: 24,
-    padding: 28,
-    marginTop: -40,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  label: { fontSize: 14, fontFamily: font.bold, color: TEAL, marginBottom: 8 },
-  input: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: "#1A202C",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  inputInner: { flex: 1, paddingVertical: 14, fontSize: 15, color: "#1A202C" },
-  eyeBtn: { padding: 4 },
-  inputError: { borderColor: "#EF4444" },
-  errorText: { color: "#EF4444", fontSize: 12, marginTop: -10, marginBottom: 10, marginLeft: 4 },
-
-  btn: {
-    backgroundColor: TEAL,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: "center",
-    shadowColor: TEAL,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: "#fff", fontSize: 16, fontFamily: font.bold, letterSpacing: 0.5 },
-
-  successContainer: { alignItems: "center", paddingVertical: 12 },
-  successIcon: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: "#F0FDFA",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  successTitle: { fontSize: 20, fontFamily: font.bold, color: "#1A202C", marginBottom: 10 },
-  successBody: { fontSize: 14, color: "#6B7280", textAlign: "center", lineHeight: 22 },
-
-  backToLogin: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    marginTop: 20,
-  },
-  backToLoginText: { fontSize: 13, color: TEAL, fontFamily: font.semiBold },
+  root: { flex: 1, backgroundColor: BG },
+  scroll: { flexGrow: 1, paddingHorizontal: 30, paddingTop: 14, paddingBottom: 26 },
+  backBtn: { width: 42, height: 42, borderRadius: 13, backgroundColor: PANEL, borderWidth: 1.5, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
+  title: { color: INK, fontSize: 24, fontFamily: font.extraBold, letterSpacing: -0.5, marginTop: 22 },
+  subtitle: { color: MUTED, fontSize: 14, lineHeight: 22, marginTop: 8, marginBottom: 8 },
+  fieldBlock: { marginTop: 14 },
+  label: { color: "#54655F", fontSize: 12.5, fontFamily: font.bold, marginBottom: 7 },
+  input: { height: 52, borderWidth: 1.5, borderColor: BORDER, borderRadius: 14, backgroundColor: PANEL, color: INK, paddingHorizontal: 15, fontSize: 16, fontFamily: font.bold },
+  inputWithIcon: { height: 52, borderWidth: 1.5, borderColor: BORDER, borderRadius: 14, backgroundColor: PANEL, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 15 },
+  inputFlex: { flex: 1, color: INK, fontSize: 15, fontFamily: font.medium, paddingVertical: 0 },
+  error: { color: "#D64545", fontSize: 12, marginTop: 7 },
+  strengthRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 13 },
+  strengthBar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: BORDER },
+  strengthText: { color: PRIMARY, fontSize: 11.5, fontFamily: font.bold, marginLeft: 6 },
+  bottom: { marginTop: "auto", paddingTop: 20, paddingHorizontal: 30, paddingBottom: 26 },
+  primaryBtn: { height: 54, borderRadius: 16, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
+  primaryBtnText: { color: PRIMARY_DARK, fontSize: 16, fontFamily: font.bold },
+  successWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 30 },
+  successOuter: { width: 104, height: 104, borderRadius: 52, backgroundColor: "#E4E8EA", alignItems: "center", justifyContent: "center" },
+  successInner: { width: 74, height: 74, borderRadius: 37, backgroundColor: PRIMARY, alignItems: "center", justifyContent: "center" },
+  successTitle: { color: INK, fontSize: 24, fontFamily: font.extraBold, letterSpacing: -0.5, marginTop: 26 },
+  successBody: { color: MUTED, fontSize: 14, lineHeight: 23, textAlign: "center", marginTop: 10 },
 });
