@@ -29,7 +29,11 @@ interface FormData {
   email: string;
 }
 
-export default function ForgotPasswordScreen({ navigation }: { navigation: { goBack: () => void } }) {
+export default function ForgotPasswordScreen({
+  navigation,
+}: {
+  navigation: { goBack: () => void; navigate: (screen: string, params?: object) => void };
+}) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const { control, handleSubmit, getValues, formState: { errors } } = useForm<FormData>({
@@ -39,13 +43,16 @@ export default function ForgotPasswordScreen({ navigation }: { navigation: { goB
   async function onSubmit(data: FormData) {
     setLoading(true);
     try {
+      // Sends a six-digit code, not a link — a reset link tapped in a mail app
+      // opens in that app's browser, nowhere near the app that needs the new
+      // password. The code can simply be read and typed here.
       await forgotPassword(data.email.trim());
       setSent(true);
     } catch (err: unknown) {
       Toast.show({
         type: "error",
         text1: "Request failed",
-        text2: (err as { message?: string })?.message || "Could not send reset email",
+        text2: (err as { message?: string })?.message || "Could not send reset code",
       });
     } finally {
       setLoading(false);
@@ -63,17 +70,25 @@ export default function ForgotPasswordScreen({ navigation }: { navigation: { goB
           </View>
           <Text style={styles.successTitle}>Check your email</Text>
           <Text style={styles.successBody}>
-            We sent a reset link to{"\n"}
+            We sent a 6-digit reset code to{"\n"}
             <Text style={styles.emailStrong}>{getValues("email")}</Text>
           </Text>
           <View style={styles.notice}>
             <Ionicons name="time-outline" size={15} color={GOLD} />
-            <Text style={styles.noticeText}>Link expires in 30 minutes</Text>
+            <Text style={styles.noticeText}>Code expires in 10 minutes</Text>
           </View>
         </View>
         <View style={styles.bottom}>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => Linking.openURL("message://").catch(() => undefined)}>
-            <Text style={styles.primaryBtnText}>Open email app</Text>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() =>
+              navigation.navigate("ResetPassword", { email: getValues("email").trim().toLowerCase() })
+            }
+          >
+            <Text style={styles.primaryBtnText}>Enter code</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Linking.openURL("message://").catch(() => undefined)}>
+            <Text style={styles.resend}>Open email app</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSubmit(onSubmit)}>
             <Text style={styles.resend}>Didn't get it? Resend</Text>
@@ -96,7 +111,7 @@ export default function ForgotPasswordScreen({ navigation }: { navigation: { goB
           <Ionicons name="lock-closed-outline" size={34} color={PRIMARY} />
         </View>
         <Text style={styles.title}>Forgot password?</Text>
-        <Text style={styles.subtitle}>Enter the email linked to your membership and we'll send you a secure reset link.</Text>
+        <Text style={styles.subtitle}>Enter the email linked to your membership and we'll send you a 6-digit reset code.</Text>
 
         <Text style={styles.label}>Email</Text>
         <Controller
@@ -125,7 +140,7 @@ export default function ForgotPasswordScreen({ navigation }: { navigation: { goB
 
         <View style={styles.bottom}>
           <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
-            <Text style={styles.primaryBtnText}>{loading ? "Sending..." : "Send reset link"}</Text>
+            <Text style={styles.primaryBtnText}>{loading ? "Sending..." : "Send reset code"}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={styles.backLink}>Back to login</Text>

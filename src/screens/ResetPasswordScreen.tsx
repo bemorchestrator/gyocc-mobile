@@ -12,7 +12,8 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
-import { resetPassword } from "../api/auth";
+import { forgotPassword, resetPasswordWithCode } from "../api/auth";
+import { checkPasswordStrength, PASSWORD_MIN_LENGTH, PASSWORD_RULES_TEXT } from "../utils/passwordRules";
 import { font } from "../constants/fonts";
 
 const BG = "#F1F0EC";
@@ -24,34 +25,61 @@ const PRIMARY = "#840016";
 const PRIMARY_DARK = "#F4F5F0";
 
 interface FormData {
-  token: string;
+  /** The six-digit code from the reset email. */
+  code: string;
+  email: string;
   newPassword: string;
   confirmPassword: string;
 }
 
-export default function ResetPasswordScreen({ navigation, route }: { navigation: { navigate: (screen: string) => void; goBack: () => void }; route?: { params?: { token?: string } } }) {
+export default function ResetPasswordScreen({
+  navigation,
+  route,
+}: {
+  navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void };
+  route?: { params?: { email?: string } };
+}) {
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const [done, setDone] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const linkedToken = route?.params?.token?.trim() ?? "";
-  const { control, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
-    defaultValues: { token: linkedToken, newPassword: "", confirmPassword: "" },
+  const presetEmail = route?.params?.email?.trim().toLowerCase() ?? "";
+  const { control, handleSubmit, watch, getValues, formState: { errors } } = useForm<FormData>({
+    defaultValues: { code: "", email: presetEmail, newPassword: "", confirmPassword: "" },
   });
 
   async function onSubmit(data: FormData) {
     setLoading(true);
     try {
-      await resetPassword(data.token.trim(), data.newPassword);
+      await resetPasswordWithCode(data.email.trim(), data.code.trim(), data.newPassword);
       setDone(true);
     } catch (err: unknown) {
       Toast.show({
         type: "error",
         text1: "Reset failed",
-        text2: (err as { message?: string })?.message || "Invalid or expired token",
+        text2: (err as { message?: string })?.message || "That code is invalid or has expired",
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    const email = getValues("email").trim();
+    if (!email) return;
+    setResending(true);
+    try {
+      await forgotPassword(email);
+      Toast.show({ type: "success", text1: "New code sent", text2: `Check ${email}` });
+    } catch (err: unknown) {
+      Toast.show({
+        type: "error",
+        text1: "Could not resend",
+        text2: (err as { message?: string })?.message || "Please try again shortly",
+      });
+    } finally {
+      setResending(false);
     }
   }
 
@@ -77,7 +105,14 @@ export default function ResetPasswordScreen({ navigation, route }: { navigation:
   }
 
   const password = watch("newPassword");
-  const strength = Math.min(4, Math.max(1, Math.ceil(password.length / 3)));
+  // Meter mirrors the actual policy: nothing counts as strong until the
+  // server would accept it.
+  const passwordProblem = checkPasswordStrength(password);
+  const strength = passwordProblem
+    ? Math.min(2, Math.max(1, Math.ceil(password.length / 5)))
+    : password.length >= PASSWORD_MIN_LENGTH + 4
+      ? 4
+      : 3;
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : "height"}>
@@ -86,25 +121,56 @@ export default function ResetPasswordScreen({ navigation, route }: { navigation:
           <Ionicons name="chevron-back" size={22} color="#5F7069" />
         </TouchableOpacity>
         <Text style={styles.title}>Set a new password</Text>
-        <Text style={styles.subtitle}>{linkedToken ? "Choose a new password for your account." : "Enter the code from your email, then choose a new password."}</Text>
+        <Text style={styles.subtitle}>Enter the 6-digit code from your email, then choose a new password.</Text>
 
-        {!linkedToken ? <Field label="Reset code" error={errors.token?.message}>
+        {!presetEmail ? (
+          <Field label="Email" error={errors.email?.message}>
+            <Controller
+              control={control}
+              name="email"
+              rules={{
+                required: "Email is required",
+                pattern: { value: /^\S+@\S+\.\S+$/, message: "Enter a valid email" },
+              }}
+              render={({ field: { onChange, value } }) => (
+                <TextInput
+                  style={styles.input}
+                  value={value}
+                  onChangeText={onChange}
+                  placeholder="you@example.com"
+                  placeholderTextColor="#8A9A94"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                />
+              )}
+            />
+          </Field>
+        ) : null}
+
+        <Field label="Reset code" error={errors.code?.message}>
           <Controller
             control={control}
-            name="token"
-            rules={{ required: "Reset code is required" }}
+            name="code"
+            rules={{
+              required: "Reset code is required",
+              pattern: { value: /^\d{6}$/, message: "Enter the 6-digit code" },
+            }}
             render={({ field: { onChange, value } }) => (
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.codeInput]}
                 value={value}
-                onChangeText={onChange}
-                placeholder="7K2-9QX"
+                onChangeText={(next) => onChange(next.replace(/\D/g, "").slice(0, 6))}
+                placeholder="123456"
                 placeholderTextColor="#8A9A94"
-                autoCapitalize="none"
+                keyboardType="number-pad"
+                inputMode="numeric"
+                textContentType="oneTimeCode"
+                maxLength={6}
               />
             )}
           />
-        </Field> : null}
+        </Field>
 
         <Field label="New password" error={errors.newPassword?.message}>
           <View style={styles.inputWithIcon}>
@@ -112,9 +178,12 @@ export default function ResetPasswordScreen({ navigation, route }: { navigation:
             <Controller
               control={control}
               name="newPassword"
-              rules={{ required: "Password is required", minLength: { value: 8, message: "Minimum 8 characters" } }}
+              rules={{
+                required: "Password is required",
+                validate: (value: string) => checkPasswordStrength(value) ?? true,
+              }}
               render={({ field: { onChange, value } }) => (
-                <TextInput style={styles.inputFlex} value={value} onChangeText={onChange} secureTextEntry={!showNew} placeholder="New password" placeholderTextColor="#8A9A94" />
+                <TextInput style={styles.inputFlex} value={value} onChangeText={onChange} secureTextEntry={!showNew} placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`} placeholderTextColor="#8A9A94" />
               )}
             />
             <TouchableOpacity onPress={() => setShowNew((next) => !next)}>
@@ -143,6 +212,8 @@ export default function ResetPasswordScreen({ navigation, route }: { navigation:
           </View>
         </Field>
 
+        <Text style={styles.hint}>{PASSWORD_RULES_TEXT}</Text>
+
         <View style={styles.strengthRow}>
           {[1, 2, 3, 4].map((step) => <View key={step} style={[styles.strengthBar, step <= strength && { backgroundColor: PRIMARY }]} />)}
           <Text style={styles.strengthText}>{strength >= 3 ? "Strong" : "Weak"}</Text>
@@ -151,6 +222,11 @@ export default function ResetPasswordScreen({ navigation, route }: { navigation:
         <View style={styles.bottom}>
           <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
             <Text style={styles.primaryBtnText}>{loading ? "Resetting..." : "Reset password"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleResend} disabled={resending}>
+            <Text style={[styles.resend, resending && { opacity: 0.5 }]}>
+              {resending ? "Sending..." : "Didn't get a code? Send another"}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -180,6 +256,9 @@ const styles = StyleSheet.create({
   inputWithIcon: { height: 52, borderWidth: 1.5, borderColor: BORDER, borderRadius: 14, backgroundColor: PANEL, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 15 },
   inputFlex: { flex: 1, color: INK, fontSize: 15, fontFamily: font.medium, paddingVertical: 0 },
   error: { color: "#D64545", fontSize: 12, marginTop: 7 },
+  hint: { color: MUTED, fontSize: 12, lineHeight: 17, marginTop: 10 },
+  codeInput: { fontSize: 20, fontFamily: font.bold, letterSpacing: 6 },
+  resend: { color: MUTED, fontSize: 13, textAlign: "center", marginTop: 16 },
   strengthRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 13 },
   strengthBar: { flex: 1, height: 5, borderRadius: 3, backgroundColor: BORDER },
   strengthText: { color: PRIMARY, fontSize: 11.5, fontFamily: font.bold, marginLeft: 6 },

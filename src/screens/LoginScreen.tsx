@@ -47,7 +47,7 @@ interface FormData {
   password: string;
 }
 
-export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
+export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void } }) {
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -59,13 +59,29 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
 
   async function onSubmit(data: FormData) {
     setLoading(true);
+    const email = data.email.trim().toLowerCase();
     try {
-      await login(data.email.trim(), data.password);
+      await login(email, data.password);
     } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? "";
+
+      // The account exists but the address was never confirmed. Send them to
+      // the code screen rather than leaving them retrying a password that is
+      // perfectly correct.
+      if (/verif/i.test(message)) {
+        Toast.show({
+          type: "success",
+          text1: "Confirm your email first",
+          text2: "We'll send a 6-digit code to get you in.",
+        });
+        navigation.navigate("VerifyEmail", { email });
+        return;
+      }
+
       Toast.show({
         type: "error",
         text1: "Login failed",
-        text2: (err as { message?: string })?.message || "Invalid credentials",
+        text2: message || "Invalid credentials",
       });
     } finally {
       setLoading(false);

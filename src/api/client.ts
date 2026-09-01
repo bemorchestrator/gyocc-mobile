@@ -7,12 +7,23 @@ if (__DEV__) {
   console.log(`[API] Base URL ${BASE_URL}`);
 }
 
+/**
+ * Response header the backend mirrors the signed session cookie into.
+ *
+ * React Native hides Set-Cookie from JavaScript, so the app reads the cookie
+ * back from here instead. Storing the *signed* value is what lets one session
+ * satisfy both Better Auth's own endpoints and this app's session middleware.
+ */
+const NATIVE_SET_COOKIE_HEADER = "x-gyocc-set-cookie";
+
 const client = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
     Origin: BASE_URL,
+    // Tells the backend to mirror the signed session cookie back to us.
+    "X-GYOCC-Client": "mobile",
   },
 });
 
@@ -30,19 +41,29 @@ client.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Capture set-cookie headers from responses and persist them
+/** Pull `gyocc.session_token=...` out of one or more Set-Cookie values. */
+function readSessionCookie(raw: string | string[] | undefined): string | null {
+  if (!raw) return null;
+  const parts = Array.isArray(raw) ? raw : [raw];
+  const session = parts
+    .flatMap((value) => value.split(/,(?=\s*[A-Za-z0-9_.-]+=)/))
+    .map((value) => value.split(";")[0].trim())
+    .find((value) => value.startsWith("gyocc.session_token="));
+  return session ?? null;
+}
+
+// Persist the session cookie the backend hands back.
 client.interceptors.response.use(
   async (response) => {
-    const setCookie = response.headers["set-cookie"];
-    if (setCookie) {
-      // Extract session_token cookie (the one that matters for auth)
-      const sessionCookie = setCookie
-        .map((c: string) => c.split(";")[0])
-        .filter((c: string) => c.startsWith("gyocc.session_token="))
-        .join("; ");
-      if (sessionCookie) {
-        await setSessionValue(COOKIE_KEY, sessionCookie);
-      }
+    // The mirrored header first: on React Native it is the only one that
+    // actually reaches JavaScript, and it carries the signature that Better
+    // Auth verifies. Plain Set-Cookie is the fallback (web builds).
+    const sessionCookie =
+      readSessionCookie(response.headers[NATIVE_SET_COOKIE_HEADER]) ??
+      readSessionCookie(response.headers["set-cookie"]);
+
+    if (sessionCookie) {
+      await setSessionValue(COOKIE_KEY, sessionCookie);
     }
     return response;
   },

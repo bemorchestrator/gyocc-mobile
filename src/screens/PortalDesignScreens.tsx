@@ -68,6 +68,7 @@ import { font } from "../constants/fonts";
 import Toast from "react-native-toast-message";
 import Svg, { Circle } from "react-native-svg";
 import AttendanceMapModal from "../components/AttendanceMapModal";
+import ClockMapBackground from "../components/ClockMapBackground";
 
 const INK = "#111527";
 const BLUE = "#840016";
@@ -580,6 +581,7 @@ function Status({ label, color }: { label: string; color: string }) {
 export function ClockScreen() {
   const query = usePortal();
   const queryClient = useQueryClient();
+  const insets = useSafeAreaInsets();
   const call = sortedCalls(query.data).find((item) => item.canClockOut || item.clockInWindow?.isOpen || item.canClockIn) ?? sortedCalls(query.data)[0];
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -599,19 +601,35 @@ export function ClockScreen() {
       Toast.show({ type: "error", text1: call.canClockOut ? "Clock-out unavailable" : "Clock-in unavailable", text2: (error as { message?: string })?.message });
     } finally { setBusy(false); }
   };
-  return <Screen refresh={() => query.refetch()} header={<PageHeader title="Clock In" subtitle={call?.canClockOut ? "ON SITE" : "ATTENDANCE"} />}>
-    <PortalState query={query}>{() => call ? <View style={styles.clockPage}>
-      <Text style={styles.clockCall}>{call.title}</Text><Text style={styles.heroMeta}>{call.venueName || "Venue to be announced"}</Text>
-      <View style={styles.clockFace}><Ionicons name="time-outline" size={60} color={BLUE} /><Text style={styles.clockFaceLabel}>{call.canClockOut ? "CLOCKED IN" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.clockInWindow?.isOpen || call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text><Text style={styles.clockFaceTime}>{call.canClockOut ? callTime(call) : call.clockInWindow?.opensAt ? format(new Date(call.clockInWindow.opensAt), "h:mm a") : callTime(call)}</Text></View>
-      <View style={styles.locationCard}><Ionicons name="location-outline" size={20} color={GREEN} /><View><Text style={styles.rowTitle}>{call.venueName || "Venue to be announced"}</Text><Text style={styles.rowMeta}>{call.venueAddress || "Location is verified when you clock in"}</Text></View></View>
-      <TouchableOpacity disabled={busy || (!call.canClockOut && !call.canClockIn)} onPress={() => call.canClockOut ? void act() : setMapOpen(true)} style={[styles.clockButton, (!call.canClockOut && !call.canClockIn) && styles.disabled]}><Ionicons name={call.canClockOut ? "stop-circle-outline" : "time-outline"} size={22} color="#fff" /><Text style={styles.clockButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : "CLOCK IN"}</Text></TouchableOpacity>
-      <Text style={styles.clockNote}>ONE TAP · ATTENDANCE IS VERIFIED ON SITE</Text>
-      {!call.canClockIn && call.clockInWindow?.isOpen ? <Text style={styles.sheetInfo}>{clockText(call)}</Text> : null}
-      <AttendanceMapModal visible={mapOpen} action="in" venueName={call.venueName} venueAddress={call.venueAddress}
-        venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters}
-        busy={busy} onClose={() => setMapOpen(false)} onConfirm={(location) => act(location)} />
-    </View> : <Text style={styles.emptyText}>No call is available for clock-in.</Text>}</PortalState>
-  </Screen>;
+  return <View style={styles.clockMapScreen}>
+    {call ? <ClockMapBackground venueName={call.venueName} venueAddress={call.venueAddress}
+      venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters} /> : null}
+    <LinearGradient colors={["rgba(17,21,39,.62)", "rgba(17,21,39,0)"]} style={styles.clockMapShade} pointerEvents="none" />
+    <View style={[styles.clockMapHeader, { top: insets.top + 12 }]}>
+      <View><Text style={styles.clockMapHeaderTitle}>Clock In</Text><Text style={styles.clockMapHeaderMeta}>{call?.canClockOut ? "YOU ARE ON SITE" : "LOCATION VERIFIED ATTENDANCE"}</Text></View>
+      <TouchableOpacity accessibilityLabel="Refresh clock-in details" style={styles.clockMapRefresh} onPress={() => void query.refetch()}>
+        <Ionicons name="refresh" size={20} color={INK} />
+      </TouchableOpacity>
+    </View>
+    <PortalState query={query}>{() => call ? <View style={[styles.clockMapPanel, { bottom: Math.max(insets.bottom + 88, 104) }]}>
+      <View style={styles.clockMapStatusRow}>
+        <View style={[styles.clockMapStatusDot, { backgroundColor: call.canClockOut || call.canClockIn ? GREEN : GOLD }]} />
+        <Text style={styles.clockMapStatus}>{call.canClockOut ? "CLOCKED IN" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.clockInWindow?.isOpen || call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text>
+        <Text style={styles.clockMapTime}>{call.canClockOut ? callTime(call) : call.clockInWindow?.opensAt ? format(new Date(call.clockInWindow.opensAt), "h:mm a") : callTime(call)}</Text>
+      </View>
+      <Text style={styles.clockMapCall}>{call.title}</Text>
+      <View style={styles.clockMapLocationRow}><Ionicons name="location" size={16} color={BLUE} /><Text style={styles.clockMapLocation} numberOfLines={2}>{call.venueAddress || call.venueName || "Venue to be announced"}</Text></View>
+      {!call.canClockIn && !call.canClockOut ? <Text style={styles.clockMapMessage}>{clockText(call)}</Text> : null}
+      <TouchableOpacity disabled={busy || (!call.canClockOut && !call.canClockIn)} onPress={() => call.canClockOut ? void act() : setMapOpen(true)}
+        style={[styles.clockMapButton, (!call.canClockOut && !call.canClockIn) && styles.disabled]}>
+        {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name={call.canClockOut ? "stop-circle" : "navigate-circle"} size={24} color="#fff" />}
+        <Text style={styles.clockMapButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : "CLOCK IN"}</Text>
+      </TouchableOpacity>
+    </View> : <View style={styles.clockMapEmpty}><Text style={styles.emptyText}>No call is available for clock-in.</Text></View>}</PortalState>
+    {call ? <AttendanceMapModal visible={mapOpen} action="in" venueName={call.venueName} venueAddress={call.venueAddress}
+      venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters}
+      busy={busy} onClose={() => setMapOpen(false)} onConfirm={(location) => act(location)} /> : null}
+  </View>;
 }
 
 type EarningsView = "gigs" | "stipends";
@@ -827,7 +845,7 @@ export function ProfileScreen() {
     </View>
 
     <Text style={styles.accountSectionTitle}>Notifications</Text>
-    <View style={styles.accountGroup}>
+    <View style={styles.accountList}>
       <PreferenceToggle icon="checkmark-circle-outline" label="RSVP reminders" value={preferenceValues.rsvpReminders} onPress={() => setBooleanPreference("rsvpReminders")} />
       <PreferenceToggle icon="calendar-outline" label="Schedule reminders" value={preferenceValues.scheduleReminders} onPress={() => setBooleanPreference("scheduleReminders")} />
       <PreferenceToggle icon="wallet-outline" label="Payouts & stipends" value={preferenceValues.payoutUpdates} onPress={() => setBooleanPreference("payoutUpdates")} />
@@ -1181,13 +1199,25 @@ const styles = StyleSheet.create({
   primaryActionTextDisabled: { color: DIM },
   primaryActionText: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1.8, color: "#fff" },
   sheetInfo: { fontFamily: font.medium, fontSize: 11.5, lineHeight: 17, color: MUTED, textAlign: "center", backgroundColor: CARD, borderRadius: 12, padding: 14, marginTop: 18 },
-  clockPage: { alignItems: "center", paddingTop: 24 }, clockCall: { fontFamily: font.extraBold, fontSize: 19, color: INK, textAlign: "center" },
-  clockFace: { width: 238, height: 238, borderRadius: 119, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center", marginVertical: 34, shadowColor: BLUE, shadowOpacity: 0.12, shadowRadius: 24, elevation: 4 },
-  clockFaceLabel: { fontFamily: font.bold, fontSize: 9, letterSpacing: 2.5, color: MUTED, marginTop: 12 }, clockFaceTime: { fontFamily: font.extraBold, fontSize: 34, letterSpacing: -1.5, color: INK, marginTop: 2 },
-  locationCard: { alignSelf: "stretch", flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: CARD, borderRadius: 16, padding: 14 },
-  clockButton: { alignSelf: "stretch", height: 62, borderRadius: 16, backgroundColor: BLUE, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 20, shadowColor: BLUE, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 5 },
-  clockButtonText: { fontFamily: font.extraBold, fontSize: 17, letterSpacing: 1.5, color: "#fff" }, disabled: { opacity: 0.42 },
-  clockNote: { fontFamily: font.bold, fontSize: 8.5, letterSpacing: 1.6, color: DIM, marginTop: 14 },
+  clockMapScreen: { flex: 1, backgroundColor: "#DCE4DF" },
+  clockMapShade: { position: "absolute", top: 0, left: 0, right: 0, height: 180 },
+  clockMapHeader: { position: "absolute", left: 18, right: 18, minHeight: 64, borderRadius: 22, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,.94)", shadowColor: INK, shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  clockMapHeaderTitle: { fontFamily: font.extraBold, fontSize: 21, color: INK, letterSpacing: -0.5 },
+  clockMapHeaderMeta: { fontFamily: font.bold, fontSize: 7.5, letterSpacing: 1.5, color: MUTED, marginTop: 4 },
+  clockMapRefresh: { width: 40, height: 40, borderRadius: 14, backgroundColor: PAPER, alignItems: "center", justifyContent: "center" },
+  clockMapPanel: { position: "absolute", left: 14, right: 14, borderRadius: 26, padding: 20, backgroundColor: "rgba(255,255,255,.97)", borderWidth: 1, borderColor: "rgba(255,255,255,.65)", shadowColor: INK, shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
+  clockMapStatusRow: { flexDirection: "row", alignItems: "center" },
+  clockMapStatusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  clockMapStatus: { flex: 1, fontFamily: font.extraBold, fontSize: 9, letterSpacing: 1.4, color: MUTED },
+  clockMapTime: { fontFamily: font.extraBold, fontSize: 13, color: INK },
+  clockMapCall: { fontFamily: font.extraBold, fontSize: 21, lineHeight: 25, color: INK, marginTop: 11 },
+  clockMapLocationRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 7 },
+  clockMapLocation: { flex: 1, fontFamily: font.medium, fontSize: 11.5, lineHeight: 16, color: MUTED },
+  clockMapMessage: { fontFamily: font.semiBold, fontSize: 10.5, lineHeight: 15, color: "#8A6117", backgroundColor: "rgba(224,178,92,.12)", borderRadius: 10, padding: 10, marginTop: 12 },
+  clockMapButton: { height: 60, borderRadius: 18, backgroundColor: BLUE, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 17, shadowColor: BLUE, shadowOpacity: 0.28, shadowRadius: 15, shadowOffset: { width: 0, height: 7 }, elevation: 5 },
+  clockMapButtonText: { fontFamily: font.extraBold, fontSize: 16, letterSpacing: 1.5, color: "#fff" },
+  clockMapEmpty: { position: "absolute", left: 20, right: 20, top: "42%", borderRadius: 22, padding: 24, backgroundColor: "rgba(255,255,255,.95)" },
+  disabled: { opacity: 0.42 },
   earningsSummary: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", paddingVertical: 20 },
   earningsTotal: { fontFamily: font.extraBold, fontSize: 36, letterSpacing: -2, color: INK, marginTop: 4 }, pendingTotal: { fontFamily: font.extraBold, fontSize: 18, color: GOLD, marginTop: 3 },
   payoutAmount: { fontFamily: font.extraBold, fontSize: 12, textAlign: "right" },
@@ -1205,6 +1235,7 @@ const styles = StyleSheet.create({
   profileStats: { flexDirection: "row", paddingVertical: 17, marginTop: 13, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", borderRadius: 20, shadowColor: "#301728", shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 }, profileStat: { flex: 1, alignItems: "center", borderRightWidth: 1, borderRightColor: BORDER }, profileStatValue: { fontFamily: font.extraBold, fontSize: 18 }, profileStatLabel: { fontFamily: font.semiBold, fontSize: 7.5, lineHeight: 10.5, letterSpacing: 0.85, textAlign: "center", color: DIM, marginTop: 3 },
   accountSectionTitle: { fontFamily: font.bold, fontSize: 13.5, color: INK, marginTop: 23, marginBottom: 9 },
   accountGroup: { backgroundColor: WHITE, borderRadius: 18, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", paddingHorizontal: 14, overflow: "hidden", shadowColor: "#301728", shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  accountList: { backgroundColor: WHITE },
   accountRowIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: "#F8ECEE", alignItems: "center", justifyContent: "center" },
   accountDangerIcon: { backgroundColor: "#FBEEE9" },
   profileRow: { minHeight: 61, flexDirection: "row", alignItems: "center", gap: 11, borderBottomWidth: 1, borderBottomColor: BORDER },

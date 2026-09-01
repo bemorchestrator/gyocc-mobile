@@ -21,11 +21,16 @@ import LoadingSpinner from "./src/components/LoadingSpinner";
 import { usePushNotifications } from "./src/utils/pushNotifications";
 import { useRealtimeSync } from "./src/api/realtime";
 
+// Deep links kept for anyone landing from an older email. Both flows now use
+// one-time codes instead of links (a link tapped in a mail app opens in that
+// app's own browser, which can't reach the native session), so these screens
+// take an email address and prompt for the code rather than consuming a token.
 const linking = {
   prefixes: ["gyocc://"],
   config: {
     screens: {
       ResetPassword: "reset-password",
+      VerifyEmail: "verify-email",
     },
   },
 };

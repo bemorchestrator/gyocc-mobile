@@ -18,6 +18,7 @@ import { Controller, useForm } from "react-hook-form";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/AuthContext";
 import WelcomeBackdrop from "../components/WelcomeBackdrop";
+import { checkPasswordStrength, PASSWORD_MIN_LENGTH, PASSWORD_RULES_TEXT } from "../utils/passwordRules";
 import { font } from "../constants/fonts";
 
 const BG = "#840016";
@@ -37,7 +38,7 @@ interface FormData {
   confirm: string;
 }
 
-export default function RegisterScreen({ navigation }: { navigation: { navigate: (screen: string) => void; goBack: () => void } }) {
+export default function RegisterScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void } }) {
   const { register } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
@@ -47,23 +48,20 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
     defaultValues: { name: "", email: "", password: "", confirm: "" },
   });
   const password = watch("password");
+  const name = watch("name");
+  const email = watch("email");
 
   async function onSubmit(data: FormData) {
     setLoading(true);
+    const trimmedEmail = data.email.trim().toLowerCase();
     try {
-      const outcome = await register(data.name.trim(), data.email.trim(), data.password);
+      const outcome = await register(data.name.trim(), trimmedEmail, data.password);
       if (outcome === "needs-verification") {
-        Toast.show({ type: "success", text1: "Check your email", text2: "Confirm your address, then log in." });
-        navigation.navigate("Login");
-      } else if (outcome === "awaiting-access") {
-        Toast.show({
-          type: "success",
-          text1: "Account created",
-          text2: "Your conductor needs to grant access before you can sign in.",
-        });
-        navigation.navigate("Login");
+        Toast.show({ type: "success", text1: "Check your email", text2: "We sent you a 6-digit code." });
+        navigation.navigate("VerifyEmail", { email: trimmedEmail });
       }
-      // On "signed-in" the session is live and the navigator swaps to the app itself.
+      // On "signed-in" the session is live and the navigator swaps itself —
+      // into the app, or to onboarding when the account has no organization.
     } catch (err: unknown) {
       Toast.show({
         type: "error",
@@ -153,7 +151,8 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
                 name="password"
                 rules={{
                   required: "Password is required",
-                  minLength: { value: 8, message: "Use at least 8 characters" },
+                  validate: (value: string) =>
+                    checkPasswordStrength(value, { email, name }) ?? true,
                 }}
                 render={({ field: { onChange, value } }) => (
                   <View>
@@ -161,7 +160,7 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
                     <View style={[styles.passwordField, errors.password && styles.inputError]}>
                       <TextInput
                         style={styles.passwordInput}
-                        placeholder="At least 8 characters"
+                        placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
                         placeholderTextColor={MUTED}
                         value={value}
                         onChangeText={onChange}
@@ -174,7 +173,11 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
                   </View>
                 )}
               />
-              {errors.password ? <Text style={styles.error}>{errors.password.message}</Text> : null}
+              {errors.password ? (
+                <Text style={styles.error}>{errors.password.message}</Text>
+              ) : (
+                <Text style={styles.hint}>{PASSWORD_RULES_TEXT}</Text>
+              )}
 
               <Controller
                 control={control}
@@ -234,6 +237,7 @@ const styles = StyleSheet.create({
   show: { color: PRIMARY, fontSize: 12, fontFamily: font.bold },
   inputError: { backgroundColor: "#E8D7D8" },
   error: { color: "#FFC9CE", fontSize: 11, fontFamily: font.medium, marginTop: -8, marginLeft: 3 },
+  hint: { color: ON_PRIMARY, opacity: 0.7, fontSize: 11, lineHeight: 15, fontFamily: font.regular, marginTop: -8, marginLeft: 3 },
   primaryBtn: { height: 56, borderRadius: 16, backgroundColor: HEADER, alignItems: "center", justifyContent: "center", marginTop: 5, shadowColor: "#2E0008", shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
   primaryBtnText: { color: PRIMARY, fontSize: 14, fontFamily: font.bold },
   footerLink: { marginTop: 24, alignSelf: "center" },

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -48,6 +48,12 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const portalQuery = useQuery({
     queryKey: ["member-portal", user?.email ?? "anonymous"],
@@ -85,12 +91,12 @@ export default function HomeScreen() {
       focusNonce: Date.now(),
     });
 
-  const nextCall = useMemo(() => {
-    const upcoming = portal?.upcoming ?? [];
-    return [...upcoming].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    )[0];
-  }, [portal]);
+  const homeCalls = useMemo(
+    () => orderHomeCalls(portal?.upcoming ?? [], currentTime),
+    [portal, currentTime]
+  );
+  const nextCall = homeCalls[0];
+  const nextCallIsOngoing = nextCall ? isOngoing(nextCall, currentTime) : false;
 
   const displayName = portal?.member.name || user?.name || user?.email || "Member";
   const firstName = displayName.split(" ")[0];
@@ -242,7 +248,9 @@ export default function HomeScreen() {
 
             {/* ---------- next call digest ---------- */}
             <View style={styles.card}>
-              <Text style={styles.digestLabel}>NEXT CALL</Text>
+              <Text style={styles.digestLabel}>
+                {nextCallIsOngoing ? "ONGOING" : "NEXT CALL"}
+              </Text>
               {nextCall ? (
                 <>
                   <Text style={styles.digestTitle}>{nextCall.title}</Text>
@@ -282,7 +290,7 @@ export default function HomeScreen() {
             </View>
 
             {/* ---------- upcoming ---------- */}
-            {(portal.upcoming?.length ?? 0) > 1 ? (
+            {homeCalls.length > 1 ? (
               <>
                 <View style={styles.sectionRow}>
                   <Text style={styles.sectionTitle}>Coming up</Text>
@@ -291,7 +299,7 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 </View>
                 <View style={[styles.card, { paddingVertical: 4 }]}>
-                  {portal.upcoming.slice(1, 5).map((item, index, arr) => (
+                  {homeCalls.slice(1, 5).map((item, index, arr) => (
                     <UpcomingRow
                       key={`${item.type}-${item.id}`}
                       item={item}
@@ -446,6 +454,25 @@ function StatTile({
 }
 
 /* ---------- next call helpers ---------- */
+
+function activityTime(item: PortalActivity, key: "date" | "endDate") {
+  const value = key === "date" ? item.date : item.endDate ?? item.date;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+}
+
+function isOngoing(item: PortalActivity, now: number) {
+  return activityTime(item, "date") <= now && activityTime(item, "endDate") >= now;
+}
+
+function orderHomeCalls(items: PortalActivity[], now: number) {
+  return [...items]
+    .filter((item) => activityTime(item, "endDate") >= now)
+    .sort((a, b) => {
+      const ongoingOrder = Number(isOngoing(b, now)) - Number(isOngoing(a, now));
+      return ongoingOrder || activityTime(a, "date") - activityTime(b, "date");
+    });
+}
 
 function formatCallMeta(item: PortalActivity) {
   const date = new Date(item.date);
