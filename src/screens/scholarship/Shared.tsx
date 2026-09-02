@@ -50,4 +50,11 @@ export const styles = StyleSheet.create({
   button: { minHeight: 51, borderRadius: 15, backgroundColor: color.maroon, alignItems: 'center', justifyContent: 'center', marginTop: 12 }, buttonSecondary: { backgroundColor: color.card, borderWidth: 1, borderColor: color.maroon }, disabled: { opacity: .45 }, buttonText: { fontFamily: font.extraBold, fontSize: 8, letterSpacing: 1.1, color: color.card }, buttonSecondaryText: { color: color.maroon },
   fieldWrap: { marginBottom: 13 }, label: { fontFamily: font.bold, fontSize: 8, letterSpacing: .7, color: color.muted, marginBottom: 6 }, field: { minHeight: 48, borderRadius: 13, paddingHorizontal: 13, backgroundColor: color.card, borderWidth: 1, borderColor: color.border, fontFamily: font.regular, fontSize: 11, color: color.ink }, multiline: { minHeight: 100, paddingTop: 12, textAlignVertical: 'top' }, badge: { alignSelf: 'flex-start', fontFamily: font.bold, fontSize: 7, letterSpacing: .7, borderWidth: 1, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 5 }, empty: { minHeight: 165, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 20, backgroundColor: color.card, borderWidth: 1, borderColor: color.border, borderRadius: 18 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 }, between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, metric: { fontFamily: font.extraBold, fontSize: 22, color: color.ink }, metricLabel: { fontFamily: font.regular, fontSize: 8.5, color: color.muted, marginTop: 2 }, body: { fontFamily: font.regular, fontSize: 10, lineHeight: 16, color: color.muted },
+  eligibilitySummary: { paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: color.border },
+  eligibilityList: { borderTopWidth: 1, borderTopColor: color.border },
+  eligibilityRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: color.border },
+  eligibilityRowMain: { flex: 1, minWidth: 0 },
+  eligibilityAttention: { marginTop: 4 },
+  eligibilityReasonRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: color.border, paddingVertical: 10 },
+  eligibilityReason: { flex: 1 },
 })

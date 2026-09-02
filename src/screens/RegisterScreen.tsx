@@ -60,8 +60,7 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
         Toast.show({ type: "success", text1: "Check your email", text2: "We sent you a 6-digit code." });
         navigation.navigate("VerifyEmail", { email: trimmedEmail });
       }
-      // On "signed-in" the session is live and the navigator swaps itself —
-      // into the app, or to onboarding when the account has no organization.
+      // On "signed-in" the session is live and the navigator opens GYOCC.
     } catch (err: unknown) {
       Toast.show({
         type: "error",

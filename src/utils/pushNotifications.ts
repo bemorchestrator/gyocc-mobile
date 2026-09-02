@@ -7,6 +7,10 @@ import * as SecureStore from "expo-secure-store";
 import { registerPushToken, unregisterPushToken } from "../api/notifications";
 
 const PUSH_DEVICE_ID_KEY = "gyocc_push_device_id";
+const PUSH_TOKEN_KEY = "gyocc_registered_push_token";
+
+let currentRegisteredToken: string | null = null;
+let pendingRegistration: Promise<void> | null = null;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -33,20 +37,48 @@ export function usePushNotifications(userId?: string | null) {
         deviceId: await getOrCreateDeviceId(),
         experienceId: Constants.expoConfig?.slug ?? null,
       });
+      currentRegisteredToken = token;
+      await SecureStore.setItemAsync(PUSH_TOKEN_KEY, token);
       registeredTokenRef.current = token;
     }
 
-    register().catch((error) => {
-      if (__DEV__) console.warn("[push] registration failed", error);
-    });
+    const registration = register();
+    pendingRegistration = registration;
+    registration
+      .catch((error) => {
+        if (__DEV__) console.warn("[push] registration failed", error);
+      })
+      .finally(() => {
+        if (pendingRegistration === registration) pendingRegistration = null;
+      });
 
     return () => {
       cancelled = true;
       const token = registeredTokenRef.current;
       registeredTokenRef.current = null;
-      if (token) unregisterPushToken(token).catch(() => undefined);
+      if (token && currentRegisteredToken === token) {
+        unregisterCurrentDevicePushToken().catch(() => undefined);
+      }
     };
   }, [userId]);
+}
+
+/**
+ * Revoke this physical device before deleting the outgoing user's session.
+ * Otherwise the authenticated DELETE runs too late and the next person using
+ * the phone can receive the previous account's push notifications.
+ */
+export async function unregisterCurrentDevicePushToken(): Promise<void> {
+  // Close the race where logout begins while initial token registration is
+  // still in flight. Once it settles, revoke whichever token it registered.
+  await pendingRegistration?.catch(() => undefined);
+  const token = currentRegisteredToken ?? (await SecureStore.getItemAsync(PUSH_TOKEN_KEY));
+  if (!token) return;
+
+  await unregisterPushToken(token);
+  currentRegisteredToken = null;
+  await SecureStore.deleteItemAsync(PUSH_TOKEN_KEY);
+  await Notifications.setBadgeCountAsync(0);
 }
 
 async function getExpoPushToken(): Promise<string | null> {

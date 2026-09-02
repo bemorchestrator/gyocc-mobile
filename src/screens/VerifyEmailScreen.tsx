@@ -102,8 +102,8 @@ export default function VerifyEmailScreen({
       try {
         await verifyEmail(email, value);
         Toast.show({ type: "success", text1: "Email confirmed", text2: "Welcome to GYOCC." });
-        // On success the navigator swaps itself out — either into the app, or
-        // to onboarding if this account has no organization yet.
+        // On success the navigator swaps directly into GYOCC. The backend
+        // supplies the account's default GYOCC membership automatically.
       } catch (err: unknown) {
         const message = (err as { message?: string })?.message ?? "That code didn't work.";
         setError(message);

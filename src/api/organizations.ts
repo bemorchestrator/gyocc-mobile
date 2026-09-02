@@ -1,10 +1,9 @@
 import client from "./client";
 
 /**
- * Organization membership — every feature route on the backend is org-scoped
- * and returns 403 NO_ACTIVE_ORGANIZATION without one. A freshly registered
- * account belongs to no organization yet, so the app has to offer a way in:
- * accept an invitation, or create an organization of your own.
+ * Organization APIs retained for admin tooling and future multi-tenant forks.
+ * The GYOCC mobile experience does not expose organization selection: the
+ * backend automatically attaches authenticated accounts to GYOCC.
  */
 
 export interface MyOrganization {
