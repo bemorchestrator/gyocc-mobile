@@ -64,6 +64,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { font } from "../constants/fonts";
 import AttendanceMapModal from "../components/AttendanceMapModal";
+import { clockInFailureFeedback } from "../utils/clockInFeedback";
 import { getActivity, getFullyAttendedMembers, type FullyAttendedMember } from "../api/memberServices";
 
 const BG = "#F4F7F5";
@@ -1006,20 +1007,22 @@ function AttendanceContent({ portal, initialActivity, focusActivityKey, focusNon
 
   const clockInMutation = useMutation({
     mutationFn: ({ activity, location, excuseReason }: { activity: PortalActivity; location: ClockLocationEvidence; excuseReason?: string }) => clockInActivity(activity.type, activity.sourceId, location, excuseReason),
-    onSuccess: (_result, { activity }) => {
+    onSuccess: (result, { activity }) => {
       queryClient.invalidateQueries({ queryKey: ["member-portal"] });
       const movedToPast = new Date(activity.endDate || activity.date) < new Date();
       Toast.show({
         type: "success",
-        text1: "You're clocked in",
-        text2: movedToPast ? "This event is now listed under Past." : undefined,
+        text1: result.alreadyClockedIn ? "Already clocked in" : "You're clocked in",
+        text2: result.alreadyClockedIn ? "Your original clock-in time was kept." : movedToPast ? "This event is now listed under Past." : undefined,
       });
       // Keep the detail open so the member sees the persistent confirmation;
       // only collapse when the activity has rolled over to Past.
       if (movedToPast) setSelected(null);
     },
-    onError: (err: { message?: string }) => {
-      Toast.show({ type: "error", text1: "Clock-in unavailable", text2: err.message });
+    onError: (error: unknown) => {
+      const feedback = clockInFailureFeedback(error);
+      if (feedback.action === "refresh-activity") queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      Toast.show({ type: "error", text1: feedback.title, text2: feedback.message });
     },
   });
   const clockOutMutation = useMutation({
@@ -1064,7 +1067,7 @@ function AttendanceContent({ portal, initialActivity, focusActivityKey, focusNon
 
   const upcoming = portal.upcoming;
   const past = portal.attendance.history.filter((item) => new Date(item.date) < new Date());
-  const activeNow = upcoming.find((item) => item.clockInWindow?.isOpen);
+  const activeNow = upcoming.find((item) => item.canClockIn || item.canClockOut);
   const header = ATTENDANCE_MODE_HEADERS[mode];
 
   return (
@@ -1225,7 +1228,7 @@ function CalendarPanel({ items, onSelect }: { items: PortalActivity[]; onSelect:
             <Text style={styles.liveMiniTitle}>{selected.title}</Text>
             <Text style={styles.liveMiniMeta}>{format(new Date(selected.date), "h:mm a")} · {selected.venueName || "Venue TBA"}</Text>
           </View>
-          <StatusPill>{selected.clockInWindow?.isOpen ? "Open" : "Soon"}</StatusPill>
+          <StatusPill>{selected.clockInAt ? "Clocked in" : selected.canClockIn || selected.canClockOut ? "Open" : selected.clockInBlockedReason ? "Action needed" : "Soon"}</StatusPill>
         </TouchableOpacity>
       ) : null}
     </View>
@@ -1364,18 +1367,19 @@ function ActivityDetail({
   const [excuseReason, setExcuseReason] = useState("");
   const [mapAction, setMapAction] = useState<"in" | "out" | null>(null);
   const status = item.attendanceStatus || (item.attended ? "Present" : "Pending");
-  const canClockIn = item.canClockIn ?? Boolean(item.clockInWindow?.isOpen && !item.clockInAt);
+  const canClockIn = item.canClockIn ?? Boolean(item.clockInWindow?.isOpen && !item.clockInAt && !item.clockInBlockedReason);
   const canClockOut = item.canClockOut ?? Boolean(item.requiresClockOut && item.clockInAt && !item.clockOutAt);
   const joined = item.confirmation === "Confirmed" || optimisticJoined;
-  const needsRsvp = item.type === "event" && !joined;
+  const needsRsvp = !joined && item.clockInBlockedReason?.code === "PARTICIPATION_NOT_CONFIRMED";
   const likelyLate = canClockIn && !item.clockInAt && new Date() > new Date(item.date);
-  const clockInMessage = item.clockInWindow?.isOpen && item.locationConfigured === false
+  const clockInMessage = item.clockInBlockedReason?.message
+    ?? (item.clockInWindow?.isOpen && item.locationConfigured === false
     ? "Clock-in is disabled until an administrator sets the venue pin"
     : item.clockInWindow?.isOpen
     ? `Window closes at ${format(new Date(item.clockInWindow.closesAt), "h:mm a")}`
     : item.clockInWindow?.isUpcoming
       ? `Clock-in opens at ${format(new Date(item.clockInWindow.opensAt), "h:mm a")}`
-      : "Clock-in has closed";
+      : "Clock-in has closed");
   const clockedIn = Boolean(item.clockInAt || item.attended);
   const clockedInDetail = `${status === "Late" ? `Marked late${item.lateMinutes ? ` · ${item.lateMinutes} min` : ""}` : "Marked present"}${item.clockInAt ? ` · ${format(new Date(item.clockInAt), "h:mm a")}` : ""}`;
   const activityEnded = Boolean(item.endDate && new Date(item.endDate) <= new Date());
@@ -1384,8 +1388,8 @@ function ActivityDetail({
     <View style={styles.stack}>
       <NestedBackHeader label="Back to Attendance" onBack={onBack} />
       <View>
-        <StatusPill tone={item.clockInWindow?.isOpen ? "good" : "warn"}>
-          {item.clockInWindow?.isOpen ? "Clock-in open" : item.clockInWindow?.isUpcoming ? "Not open yet" : "Closed"}
+        <StatusPill tone={clockedIn || canClockIn ? "good" : "warn"}>
+          {clockedIn ? "Clocked in" : canClockIn ? "Clock-in open" : item.clockInBlockedReason ? "Unavailable" : item.clockInWindow?.isUpcoming ? "Not open yet" : "Closed"}
         </StatusPill>
         <Text style={styles.detailTitle}>{item.title}</Text>
         <Text style={styles.activityMeta}>{format(new Date(item.date), "EEEE, MMMM d, yyyy")}</Text>
@@ -1394,7 +1398,7 @@ function ActivityDetail({
         <DetailLine icon="time-outline" label="Time" value={`${format(new Date(item.date), "h:mm a")} - ${item.endDate ? format(new Date(item.endDate), "h:mm a") : "TBA"}`} />
         <DetailLine icon="location-outline" label="Location" value={item.venueName || "Venue TBA"} />
         <DetailLine icon="musical-notes-outline" label="Role" value={item.role || activityKind(item.type)} />
-        <DetailLine icon="checkmark-circle-outline" label="Response" value={needsRsvp ? "Tap I'm in to join this event" : joined ? "Joined" : item.confirmation} />
+        <DetailLine icon="checkmark-circle-outline" label="Response" value={needsRsvp ? `Tap I'm in to join this ${activityKind(item.type).toLowerCase()}` : joined ? "Joined" : item.confirmation} />
         <DetailLine icon="clipboard-outline" label="Attendance" value={`${status}${item.lateMinutes ? ` · ${item.lateMinutes} min late` : ""}`} />
       </View>
       {activityEnded ? <FullyAttendedSection type={item.type} sourceId={item.sourceId} /> : null}

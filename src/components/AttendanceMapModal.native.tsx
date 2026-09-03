@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { font } from "../constants/fonts";
 import { googleMapsConfigured, googleMapsProvider } from "../services/googleMaps";
 import type { ClockLocationEvidence } from "../api/memberPortal";
+import { clockInFailureFeedback } from "../utils/clockInFeedback";
 
 export interface AttendanceMapModalProps {
   visible: boolean;
@@ -28,7 +29,7 @@ export interface AttendanceMapModalProps {
   onConfirm: (location?: ClockLocationEvidence) => Promise<void>;
 }
 
-type LocatedMember = LatLng & { accuracyMeters: number; capturedAt: string };
+type LocatedMember = LatLng & { accuracyMeters: number; capturedAt: string; isMocked?: boolean };
 
 function distanceMeters(from: LatLng, to: LatLng) {
   const radians = (value: number) => value * Math.PI / 180;
@@ -65,6 +66,8 @@ export default function AttendanceMapModal({
   const [resolvedVenue, setResolvedVenue] = useState<LatLng>();
   const [locationMessage, setLocationMessage] = useState("Finding your location…");
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [clockMs, setClockMs] = useState(Date.now());
+  const [submissionError, setSubmissionError] = useState<string>();
 
   useEffect(() => {
     if (!visible) return;
@@ -75,6 +78,8 @@ export default function AttendanceMapModal({
         : undefined;
     setResolvedVenue(suppliedVenue);
     setMemberLocation(undefined);
+    setSubmissionError(undefined);
+    setClockMs(Date.now());
     setLocationMessage("Finding your location…");
     if (action === "out") {
       setLocationMessage("Location verification is required for clock-in only.");
@@ -100,13 +105,15 @@ export default function AttendanceMapModal({
           longitude: current.coords.longitude,
           accuracyMeters: current.coords.accuracy ?? Number.POSITIVE_INFINITY,
           capturedAt: new Date(current.timestamp).toISOString(),
+          isMocked: current.mocked === true,
         };
         setMemberLocation(located);
         if (!suppliedVenue) setLocationMessage("The venue pin is not configured. Contact an administrator.");
+        else if (located.isMocked) setLocationMessage("Mock location data cannot be used to clock in.");
         else if (located.accuracyMeters > 50) setLocationMessage(`GPS accuracy is ${Math.round(located.accuracyMeters)} m. Move to an open area and retry.`);
         else {
           const distance = distanceMeters(located, suppliedVenue);
-          setLocationMessage(distance <= geofenceRadiusMeters
+          setLocationMessage(distance + located.accuracyMeters <= geofenceRadiusMeters
             ? `You are inside the clock-in area (${Math.round(distance)} m from the venue).`
             : `You are ${Math.round(distance)} m away. Move within ${geofenceRadiusMeters} m to clock in.`);
         }
@@ -119,6 +126,12 @@ export default function AttendanceMapModal({
       active = false;
     };
   }, [action, geofenceRadiusMeters, refreshNonce, visible, venueLatitude, venueLongitude]);
+
+  useEffect(() => {
+    if (!visible || action !== "in") return;
+    const timer = setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [action, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -139,15 +152,19 @@ export default function AttendanceMapModal({
 
   const confirm = async () => {
     try {
+      setSubmissionError(undefined);
       await onConfirm(memberLocation ? {
         latitude: memberLocation.latitude,
         longitude: memberLocation.longitude,
         accuracyMeters: memberLocation.accuracyMeters,
         capturedAt: memberLocation.capturedAt,
+        isMocked: memberLocation.isMocked,
       } : undefined);
       onClose();
-    } catch {
-      // The parent mutation displays the server error and leaves the map open for retry.
+    } catch (error) {
+      const feedback = clockInFailureFeedback(error);
+      setSubmissionError(feedback.message);
+      if (feedback.action === "refresh-activity") onClose();
     }
   };
 
@@ -156,13 +173,22 @@ export default function AttendanceMapModal({
     : FALLBACK_REGION;
   const actionLabel = action === "in" ? "Clock in" : "Clock out";
   const measuredDistance = resolvedVenue && memberLocation ? distanceMeters(memberLocation, resolvedVenue) : Number.POSITIVE_INFINITY;
+  const locationAgeMs = memberLocation ? clockMs - new Date(memberLocation.capturedAt).getTime() : Number.POSITIVE_INFINITY;
+  const locationExpired = Boolean(memberLocation && (locationAgeMs > 60_000 || locationAgeMs < -10_000));
   const locationAccepted = Boolean(
     resolvedVenue
     && memberLocation
     && memberLocation.accuracyMeters <= 50
-    && Date.now() - new Date(memberLocation.capturedAt).getTime() <= 60_000
-    && measuredDistance <= geofenceRadiusMeters
+    && memberLocation.isMocked !== true
+    && !locationExpired
+    && measuredDistance + memberLocation.accuracyMeters <= geofenceRadiusMeters
   );
+  const displayedLocationMessage = submissionError
+    ?? (locationExpired ? "Your GPS position expired. Refresh it before clocking in." : locationMessage);
+
+  useEffect(() => {
+    if (visible && action === "in" && locationExpired) setRefreshNonce((value) => value + 1);
+  }, [action, locationExpired, visible]);
   const confirmDisabled = busy || (action === "in" && !locationAccepted);
 
   return (
@@ -202,10 +228,10 @@ export default function AttendanceMapModal({
           <Text style={styles.address}>{venueAddress || "No venue address was provided."}</Text>
           <View style={styles.locationRow}>
             <Ionicons name="navigate-circle" size={19} color="#0D9488" />
-            <Text style={styles.locationText}>{locationMessage}</Text>
+            <Text style={styles.locationText}>{displayedLocationMessage}</Text>
           </View>
           {action === "in" ? (
-            <TouchableOpacity style={styles.refreshButton} disabled={busy} onPress={() => setRefreshNonce((value) => value + 1)}>
+            <TouchableOpacity style={styles.refreshButton} disabled={busy} onPress={() => { setSubmissionError(undefined); setRefreshNonce((value) => value + 1); }}>
               <Ionicons name="refresh" size={16} color="#0D9488" />
               <Text style={styles.refreshText}>Refresh GPS</Text>
             </TouchableOpacity>

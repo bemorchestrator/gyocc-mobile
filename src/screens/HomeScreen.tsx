@@ -261,7 +261,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     style={[
                       styles.clockBtn,
-                      !nextCall.clockInWindow?.isOpen && styles.clockBtnIdle,
+                      !(nextCall.canClockIn || nextCall.canClockOut || nextCall.clockInAt) && styles.clockBtnIdle,
                     ]}
                     activeOpacity={0.85}
                     onPress={() => openActivity(nextCall)}
@@ -269,12 +269,12 @@ export default function HomeScreen() {
                     <Ionicons
                       name="time-outline"
                       size={14}
-                      color={nextCall.clockInWindow?.isOpen ? "#FFFFFF" : INK}
+                      color={nextCall.canClockIn || nextCall.canClockOut || nextCall.clockInAt ? "#FFFFFF" : INK}
                     />
                     <Text
                       style={[
                         styles.clockBtnText,
-                        !nextCall.clockInWindow?.isOpen && styles.clockBtnTextIdle,
+                        !(nextCall.canClockIn || nextCall.canClockOut || nextCall.clockInAt) && styles.clockBtnTextIdle,
                       ]}
                     >
                       {clockLabel(nextCall)}
@@ -487,7 +487,10 @@ function formatCallMeta(item: PortalActivity) {
 }
 
 function clockLabel(item: PortalActivity) {
-  if (item.clockInWindow?.isOpen) return "Clock in now";
+  if (item.canClockOut) return "Clock out";
+  if (item.clockInAt) return "Clocked in";
+  if (item.canClockIn) return "Clock in now";
+  if (item.clockInBlockedReason) return item.clockInBlockedReason.message;
   if (item.clockInWindow?.isUpcoming) {
     const opens = new Date(item.clockInWindow.opensAt);
     if (!Number.isNaN(opens.getTime())) {

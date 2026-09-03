@@ -34,7 +34,9 @@ import {
   isToday,
   isTomorrow,
   startOfMonth,
+  startOfDay,
   startOfWeek,
+  subDays,
   subYears,
 } from "date-fns";
 import {
@@ -55,6 +57,7 @@ import {
   PagedNotifications,
 } from "../api/notifications";
 import { acknowledgeStipend, getMyStipends, StipendDisbursementDTO } from "../api/stipends";
+import { AttendanceHistoryRecord, getAttendance } from "../api/memberServices";
 import { deleteProfileAvatar, updateProfile, uploadProfileAvatar } from "../api/profile";
 import {
   DEFAULT_MEMBER_SETTINGS,
@@ -66,8 +69,9 @@ import { forgotPassword } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
 import { font } from "../constants/fonts";
 import Toast from "react-native-toast-message";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import AttendanceMapModal from "../components/AttendanceMapModal";
+import { clockInFailureFeedback } from "../utils/clockInFeedback";
 import ClockMapBackground from "../components/ClockMapBackground";
 
 const INK = "#111527";
@@ -80,8 +84,6 @@ const DIM = "#8A7E78";
 const BORDER = "rgba(54,68,90,0.12)";
 const PAPER = "#F1F0EC";
 const WHITE = "#FFFFFF";
-// Deep maroon used for the solid quick-action tiles.
-const DEEP = "#5E000F";
 const CARD = "#F4F5F0";
 
 function usePortal() {
@@ -132,6 +134,8 @@ function whenText(date: Date) {
 function clockText(call?: PortalActivity) {
   if (!call) return "No upcoming call";
   if (call.canClockOut) return "You are clocked in";
+  if (call.clockInAt) return "You are clocked in";
+  if (call.clockInBlockedReason) return call.clockInBlockedReason.message;
   if (call.clockInWindow?.isOpen && call.locationConfigured === false) return "Clock-in is disabled until an administrator sets the venue pin";
   if (call.clockInWindow?.isOpen || call.canClockIn) return "Clock-in window is open";
   if (call.clockInWindow?.isUpcoming) {
@@ -229,9 +233,11 @@ export function PortalHomeScreen() {
   const queryClient = useQueryClient();
   const portalQuery = usePortal();
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => getNotifications(50), retry: false });
+  const attendanceOverview = useQuery({ queryKey: ["member-attendance-overview"], queryFn: () => getAttendance(), retry: false });
   const refresh = () => Promise.all([
     queryClient.refetchQueries({ queryKey: ["member-portal"] }),
     queryClient.refetchQueries({ queryKey: ["notifications"] }),
+    queryClient.refetchQueries({ queryKey: ["member-attendance-overview"] }),
   ]);
 
   return (
@@ -255,28 +261,46 @@ export function PortalHomeScreen() {
             </View>
           </View>
 
-          {next ? <View style={styles.homeHero}>
+          {next ? <LinearGradient colors={["#A30020", "#840016", "#4A000D"]} locations={[0, 0.52, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.homeHero}>
             <View style={styles.homeHeroTop}>
               <View style={styles.homeHeroTag}><View style={styles.liveDot} /><Text style={styles.homeHeroTagText}>NEXT CALL · {next.type.toUpperCase()}</Text></View>
               {next.payoutAmount > 0 ? <View style={styles.homeHeroPayoutWrap}><Text style={styles.homeHeroPayoutLabel}>YOUR PAYOUT</Text><Text style={styles.homeHeroPayout}>{money(next.payoutAmount)}</Text></View> : null}
             </View>
             <TouchableOpacity style={styles.homeHeroMain} activeOpacity={0.78} onPress={() => navigation.navigate("Schedule", { sourceType: next.type, sourceId: next.sourceId, focusNonce: Date.now() })}>
               <View style={styles.homeDateTile}><Text style={styles.homeDateMonth}>{format(new Date(next.date), "MMM").toUpperCase()}</Text><Text style={styles.homeDateNumber}>{format(new Date(next.date), "dd")}</Text></View>
-              <View style={{ flex: 1 }}><Text style={styles.homeHeroTitle}>{next.title}</Text><Text style={styles.homeHeroMeta}><Ionicons name="location-outline" size={11} /> {next.venueName || "Venue to be announced"}</Text><Text style={styles.homeHeroRole}>{(next.role || "Member").toUpperCase()}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.homeHeroTitle}>{next.title}</Text>
+                <Text style={styles.homeHeroMeta}><Ionicons name="location-outline" size={11} /> {next.venueName || "Venue to be announced"}</Text>
+                <Text style={styles.homeHeroMeta} numberOfLines={1}><Ionicons name="time-outline" size={11} /> CALL {actualCallTime(next)} · START {callTime(next)} · END {callTime(next, "endDate")}</Text>
+                <Text style={styles.homeHeroRole}>{(next.role || "Member").toUpperCase()}</Text>
+              </View>
             </TouchableOpacity>
-            <View style={styles.homeHeroSchedule}>
-              <HomeHeroInfo label="CALL" value={actualCallTime(next)} />
-              <HomeHeroInfo label="START" value={callTime(next)} bordered />
-              <HomeHeroInfo label="END" value={callTime(next, "endDate")} bordered />
-            </View>
-          </View> : <View style={styles.homeEmptyHero}><Ionicons name="checkmark-circle-outline" size={30} color={GREEN} /><View style={{ flex: 1 }}><Text style={styles.homeEmptyTitle}>Your schedule is clear.</Text><Text style={styles.homeEmptyBody}>New calls will appear here when they’re published.</Text></View></View>}
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={next.canClockOut ? "Clock out" : next.clockInAt ? "View clock-in" : "Open clock in"}
+              style={[styles.homeHeroClock, !(next.canClockIn || next.canClockOut || next.clockInAt) && styles.homeHeroClockIdle]}
+              activeOpacity={0.82}
+              onPress={() => navigation.navigate("Clock", {
+                sourceType: next.type,
+                sourceId: next.sourceId,
+                focusNonce: Date.now(),
+              })}
+            >
+              <View style={styles.homeHeroClockIcon}>
+                <Ionicons name={next.canClockOut ? "stop-circle-outline" : "navigate-circle-outline"} size={22} color={BLUE} />
+              </View>
+              <View style={styles.homeHeroClockCopy}>
+                <Text style={[styles.homeHeroClockTitle, !(next.canClockIn || next.canClockOut || next.clockInAt) && styles.homeHeroClockTitleIdle]}>
+                  {next.canClockOut ? "CLOCK OUT" : next.clockInAt ? "CLOCKED IN" : next.canClockIn ? "CLOCK IN NOW" : "CLOCK IN"}
+                </Text>
+                <Text style={[styles.homeHeroClockMeta, !(next.canClockIn || next.canClockOut || next.clockInAt) && styles.homeHeroClockMetaIdle]} numberOfLines={1}>{clockText(next)}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={17} color={DIM} />
+            </TouchableOpacity>
+          </LinearGradient> : <View style={styles.homeEmptyHero}><Ionicons name="checkmark-circle-outline" size={30} color={GREEN} /><View style={{ flex: 1 }}><Text style={styles.homeEmptyTitle}>Your schedule is clear.</Text><Text style={styles.homeEmptyBody}>New calls will appear here when they’re published.</Text></View></View>}
 
-          <View style={styles.homeQuickRow}>
-            <HomeQuickAction icon="calendar-outline" label="Schedule" tint={DEEP} iconColor={PAPER} onPress={() => navigation.navigate("Schedule")} />
-            <HomeQuickAction icon="time-outline" label="Clock In" tint={DEEP} iconColor={PAPER} onPress={() => navigation.navigate("Clock")} />
-            <HomeQuickAction icon="wallet-outline" label="Earnings" tint={DEEP} iconColor={PAPER} onPress={() => navigation.navigate("Earnings")} />
-            <HomeQuickAction icon="ribbon-outline" label="Scholarship" tint={DEEP} iconColor={PAPER} onPress={() => navigation.navigate("Member")} />
-          </View>
+          <View style={styles.homeSectionHeader}><Text style={styles.homeOverviewTitle}>Attendance Overview</Text></View>
+          <HomeAttendanceOverview records={attendanceOverview.data?.records ?? []} loading={attendanceOverview.isLoading} />
 
           <View style={styles.homeSectionHeader}><Text style={styles.homeOverviewTitle}>Member Overview</Text></View>
           <HomeMemberOverview portal={portal} calls={calls} navigation={navigation} />
@@ -290,10 +314,6 @@ export function PortalHomeScreen() {
       }}</PortalState>
     </Screen>
   );
-}
-
-function HomeHeroInfo({ label, value, bordered }: { label: string; value: string; bordered?: boolean }) {
-  return <View style={[styles.homeHeroInfo, bordered && styles.homeHeroInfoBorder]}><Text style={styles.homeHeroMicro}>{label}</Text><Text style={styles.homeHeroInfoValue}>{value}</Text></View>;
 }
 
 function HomeMemberOverview({ portal, calls, navigation }: { portal: MemberPortalData; calls: PortalActivity[]; navigation: any }) {
@@ -322,6 +342,95 @@ function OverviewLegend({ color, label, value }: { color: string; label: string;
   return <View style={styles.homeLegendRow}><View style={[styles.homeLegendDot, { backgroundColor: color }]} /><Text style={styles.homeLegendLabel}>{label}</Text><Text style={styles.homeLegendValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text></View>;
 }
 
+function HomeAttendanceOverview({ records, loading }: { records: AttendanceHistoryRecord[]; loading: boolean }) {
+  const days = Array.from({ length: 30 }, (_, index) => subDays(startOfDay(new Date()), 29 - index));
+  const byDay = new Map<string, { present: number; absent: number; total: number }>();
+  for (const day of days) byDay.set(format(day, "yyyy-MM-dd"), { present: 0, absent: 0, total: 0 });
+  for (const record of records) {
+    const date = new Date(record.scheduledStartAt);
+    if (Number.isNaN(date.getTime())) continue;
+    const bucket = byDay.get(format(date, "yyyy-MM-dd"));
+    if (!bucket) continue;
+    bucket.total += 1;
+    if (["Present", "Late", "Completed", "LeftEarly"].includes(record.status)) bucket.present += 1;
+    if (["Absent", "NoShow"].includes(record.status)) bucket.absent += 1;
+  }
+
+  let present = 0;
+  let absent = 0;
+  let total = 0;
+  const series = days.map((day) => {
+    const bucket = byDay.get(format(day, "yyyy-MM-dd"));
+    present += bucket?.present ?? 0;
+    absent += bucket?.absent ?? 0;
+    total += bucket?.total ?? 0;
+    return { present, absent, total };
+  });
+  const chartWidth = 320;
+  const chartHeight = 118;
+  const top = 8;
+  const bottom = 106;
+  const hasData = total > 0;
+  const hasTrendData = total >= 3;
+  // A single cumulative attendance record becomes one jump followed by a long
+  // flat line. Keep the chart useful until there are enough records to form a
+  // real trend; these preview values never replace the real legend totals.
+  const previewSeries = days.map((_, index) => ({
+    total: 5.4 + (index * .12) + (Math.sin(index * .48) * .72),
+    present: 3.55 + (index * .08) + (Math.sin((index * .43) + .8) * .58),
+    absent: 1.35 + (index * .035) + (Math.sin((index * .56) + 2.1) * .34),
+  }));
+  const plottedSeries = hasTrendData ? series : previewSeries;
+  const max = Math.max(1, ...plottedSeries.flatMap((point) => [point.present, point.absent, point.total]));
+  const chartPoints = (key: "present" | "absent" | "total") => plottedSeries.map((point, index) => {
+    const x = index * (chartWidth / (plottedSeries.length - 1));
+    const y = bottom - (point[key] / max) * (bottom - top);
+    return { x, y };
+  });
+  const curvedPath = (key: "present" | "absent" | "total") => {
+    const pathPoints = chartPoints(key);
+    if (!pathPoints.length) return "";
+    return pathPoints.slice(0, -1).reduce((path, point, index) => {
+      const previous = pathPoints[index - 1] ?? point;
+      const next = pathPoints[index + 1];
+      const afterNext = pathPoints[index + 2] ?? next;
+      const control1X = point.x + ((next.x - previous.x) / 6);
+      const control1Y = point.y + ((next.y - previous.y) / 6);
+      const control2X = next.x - ((afterNext.x - point.x) / 6);
+      const control2Y = next.y - ((afterNext.y - point.y) / 6);
+      return `${path} C ${control1X},${control1Y} ${control2X},${control2Y} ${next.x},${next.y}`;
+    }, `M ${pathPoints[0].x},${pathPoints[0].y}`);
+  };
+
+  return <View style={styles.homeAttendanceCard}>
+    <View style={styles.homeAttendanceHeader}>
+      <Text style={styles.homeAttendanceTitle}>Last 30 days</Text>
+      <Text style={styles.homeAttendanceRange}>{format(days[0], "MMM d")} — {format(days[29], "MMM d")}</Text>
+    </View>
+    {loading ? <View style={styles.homeAttendanceLoading}><ActivityIndicator color={BLUE} /></View> : <>
+      <View style={styles.homeAttendancePlot}>
+        <Svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none">
+          {[top, (top + bottom) / 2, bottom].map((y) => <Line key={y} x1="0" y1={y} x2={chartWidth} y2={y} stroke={BORDER} strokeWidth="1" />)}
+          <Path d={curvedPath("total")} fill="none" stroke={INK} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .28} strokeDasharray={hasTrendData ? undefined : "6 5"} />
+          <Path d={curvedPath("present")} fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .38} strokeDasharray={hasTrendData ? undefined : "6 5"} />
+          <Path d={curvedPath("absent")} fill="none" stroke={BLUE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .34} strokeDasharray={hasTrendData ? undefined : "6 5"} />
+        </Svg>
+      </View>
+      <View style={styles.homeAttendanceAxis}><Text style={styles.homeAttendanceAxisText}>{format(days[0], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[14], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[29], "MMM d")}</Text></View>
+      {!hasTrendData ? <View style={styles.homeAttendanceEmptyNote}><Ionicons name="analytics-outline" size={16} color={BLUE} /><Text style={styles.homeAttendanceEmptyText}>{hasData ? "Your trend will display here after a few more events are recorded." : "Your attendance data will display here after events are recorded."}</Text></View> : null}
+      <View style={styles.homeAttendanceLegend}>
+        <AttendanceLegend color={GREEN} label="Present" value={present} />
+        <AttendanceLegend color={BLUE} label="Absent" value={absent} />
+        <AttendanceLegend color={INK} label="Total events" value={total} />
+      </View>
+    </>}
+  </View>;
+}
+
+function AttendanceLegend({ color, label, value }: { color: string; label: string; value: number }) {
+  return <View style={styles.homeAttendanceLegendItem}><View style={[styles.homeAttendanceLegendLine, { backgroundColor: color }]} /><View><Text style={styles.homeAttendanceLegendValue}>{value}</Text><Text style={styles.homeAttendanceLegendLabel}>{label}</Text></View></View>;
+}
+
 function HomeRadarRow({ call, onPress }: { call: PortalActivity; onPress: () => void }) {
   const color = call.type === "gig" ? BLUE : call.type === "rehearsal" ? GREEN : GOLD;
   return <TouchableOpacity style={styles.homeRadarRow} onPress={onPress} activeOpacity={0.72}>
@@ -329,13 +438,6 @@ function HomeRadarRow({ call, onPress }: { call: PortalActivity; onPress: () => 
     <View style={[styles.homeRadarLine, { backgroundColor: color }]} />
     <View style={{ flex: 1 }}><Text style={styles.homeRadarTitle} numberOfLines={1}>{call.title}</Text><Text style={styles.homeRadarMeta}>{callTime(call)} · {(call.venueName || "TBA").toUpperCase()}</Text></View>
     <Ionicons name="chevron-forward" size={15} color={DIM} />
-  </TouchableOpacity>;
-}
-
-function HomeQuickAction({ icon, label, onPress, tint, iconColor }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; tint: string; iconColor: string }) {
-  return <TouchableOpacity style={styles.homeQuickAction} onPress={onPress} activeOpacity={0.72}>
-    <View style={[styles.homeQuickIcon, { backgroundColor: tint }]}><Ionicons name={icon} size={21} color={iconColor} /></View>
-    <Text style={styles.homeQuickLabel}>{label}</Text>
   </TouchableOpacity>;
 }
 
@@ -375,11 +477,15 @@ export function ScheduleScreen({ route }: { route?: { params?: { sourceType?: st
   });
   const clockIn = useMutation({
     mutationFn: ({ activity, location }: { activity: PortalActivity; location: ClockLocationEvidence }) => clockInActivity(activity.type, activity.sourceId, location),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
-      Toast.show({ type: "success", text1: "You're clocked in" });
+      Toast.show({ type: "success", text1: result.alreadyClockedIn ? "Already clocked in" : "You're clocked in", text2: result.alreadyClockedIn ? "Your original clock-in time was kept." : undefined });
     },
-    onError: (error: { message?: string }) => Toast.show({ type: "error", text1: "Clock-in unavailable", text2: error.message }),
+    onError: (error: unknown) => {
+      const feedback = clockInFailureFeedback(error);
+      if (feedback.action === "refresh-activity") void queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      Toast.show({ type: "error", text1: feedback.title, text2: feedback.message });
+    },
   });
   const clockOut = useMutation({
     mutationFn: (activity: PortalActivity) => clockOutActivity(activity.type, activity.sourceId),
@@ -530,7 +636,7 @@ function ActivityDetailModal({
   if (!activity) return null;
   const confirmed = activity.confirmation === "Confirmed";
   const declined = activity.confirmation === "Declined";
-  const canClockIn = activity.canClockIn ?? Boolean(activity.clockInWindow?.isOpen && !activity.clockInAt);
+  const canClockIn = activity.canClockIn ?? Boolean(activity.clockInWindow?.isOpen && !activity.clockInAt && !activity.clockInBlockedReason);
   const canClockOut = activity.canClockOut ?? Boolean(activity.requiresClockOut && activity.clockInAt && !activity.clockOutAt);
   return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
     <View style={styles.modalBackdrop}>
@@ -578,43 +684,51 @@ function Status({ label, color }: { label: string; color: string }) {
   return <Text style={[styles.status, { color, borderColor: color }]}>{label}</Text>;
 }
 
-export function ClockScreen() {
+export function ClockScreen({ route }: { route?: { params?: { sourceType?: string; sourceId?: string; focusNonce?: number } } }) {
   const query = usePortal();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
-  const call = sortedCalls(query.data).find((item) => item.canClockOut || item.clockInWindow?.isOpen || item.canClockIn) ?? sortedCalls(query.data)[0];
+  const calls = sortedCalls(query.data);
+  const requestedCall = route?.params?.sourceType && route.params.sourceId
+    ? calls.find((item) => item.type === route.params?.sourceType && item.sourceId === route.params?.sourceId)
+    : undefined;
+  const call = requestedCall
+    ?? calls.find((item) => item.canClockOut || item.canClockIn)
+    ?? calls.find((item) => item.clockInWindow?.isUpcoming && !item.clockInBlockedReason)
+    ?? calls[0];
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
-  const act = async (location?: ClockLocationEvidence) => {
+  const act = async (location?: ClockLocationEvidence, propagateError = false) => {
     if (!call) return;
     setBusy(true);
     try {
       const wasClockOut = Boolean(call.canClockOut);
+      let alreadyClockedIn = false;
       if (wasClockOut) await clockOutActivity(call.type, call.sourceId);
       else {
         if (!location) throw new Error("A current GPS location is required");
-        await clockInActivity(call.type, call.sourceId, location);
+        const result = await clockInActivity(call.type, call.sourceId, location);
+        alreadyClockedIn = result.alreadyClockedIn === true;
       }
       await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
-      Toast.show({ type: "success", text1: wasClockOut ? "Clock-out recorded" : "You're clocked in" });
+      Toast.show({ type: "success", text1: wasClockOut ? "Clock-out recorded" : alreadyClockedIn ? "Already clocked in" : "You're clocked in", text2: alreadyClockedIn ? "Your original clock-in time was kept." : undefined });
     } catch (error) {
-      Toast.show({ type: "error", text1: call.canClockOut ? "Clock-out unavailable" : "Clock-in unavailable", text2: (error as { message?: string })?.message });
+      const feedback = call.canClockOut ? null : clockInFailureFeedback(error);
+      if (feedback?.action === "refresh-activity") await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      Toast.show({ type: "error", text1: call.canClockOut ? "Clock-out unavailable" : feedback?.title ?? "Clock-in unavailable", text2: call.canClockOut ? (error as { message?: string })?.message : feedback?.message });
+      if (propagateError) throw error;
     } finally { setBusy(false); }
   };
   return <View style={styles.clockMapScreen}>
     {call ? <ClockMapBackground venueName={call.venueName} venueAddress={call.venueAddress}
       venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters} /> : null}
-    <LinearGradient colors={["rgba(17,21,39,.62)", "rgba(17,21,39,0)"]} style={styles.clockMapShade} pointerEvents="none" />
-    <View style={[styles.clockMapHeader, { top: insets.top + 12 }]}>
-      <View><Text style={styles.clockMapHeaderTitle}>Clock In</Text><Text style={styles.clockMapHeaderMeta}>{call?.canClockOut ? "YOU ARE ON SITE" : "LOCATION VERIFIED ATTENDANCE"}</Text></View>
-      <TouchableOpacity accessibilityLabel="Refresh clock-in details" style={styles.clockMapRefresh} onPress={() => void query.refetch()}>
-        <Ionicons name="refresh" size={20} color={INK} />
-      </TouchableOpacity>
-    </View>
+    <TouchableOpacity accessibilityLabel="Refresh clock-in details" style={[styles.clockMapRefresh, { top: insets.top + 12 }]} onPress={() => void query.refetch()}>
+      <Ionicons name="refresh" size={20} color={INK} />
+    </TouchableOpacity>
     <PortalState query={query}>{() => call ? <View style={[styles.clockMapPanel, { bottom: Math.max(insets.bottom + 88, 104) }]}>
       <View style={styles.clockMapStatusRow}>
         <View style={[styles.clockMapStatusDot, { backgroundColor: call.canClockOut || call.canClockIn ? GREEN : GOLD }]} />
-        <Text style={styles.clockMapStatus}>{call.canClockOut ? "CLOCKED IN" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.clockInWindow?.isOpen || call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text>
+        <Text style={styles.clockMapStatus}>{call.canClockOut || call.clockInAt ? "CLOCKED IN" : call.clockInBlockedReason ? "ACTION NEEDED" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text>
         <Text style={styles.clockMapTime}>{call.canClockOut ? callTime(call) : call.clockInWindow?.opensAt ? format(new Date(call.clockInWindow.opensAt), "h:mm a") : callTime(call)}</Text>
       </View>
       <Text style={styles.clockMapCall}>{call.title}</Text>
@@ -623,12 +737,12 @@ export function ClockScreen() {
       <TouchableOpacity disabled={busy || (!call.canClockOut && !call.canClockIn)} onPress={() => call.canClockOut ? void act() : setMapOpen(true)}
         style={[styles.clockMapButton, (!call.canClockOut && !call.canClockIn) && styles.disabled]}>
         {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name={call.canClockOut ? "stop-circle" : "navigate-circle"} size={24} color="#fff" />}
-        <Text style={styles.clockMapButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : "CLOCK IN"}</Text>
+        <Text style={styles.clockMapButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : call.clockInAt ? "CLOCKED IN" : "CLOCK IN"}</Text>
       </TouchableOpacity>
     </View> : <View style={styles.clockMapEmpty}><Text style={styles.emptyText}>No call is available for clock-in.</Text></View>}</PortalState>
     {call ? <AttendanceMapModal visible={mapOpen} action="in" venueName={call.venueName} venueAddress={call.venueAddress}
       venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters}
-      busy={busy} onClose={() => setMapOpen(false)} onConfirm={(location) => act(location)} /> : null}
+      busy={busy} onClose={() => setMapOpen(false)} onConfirm={(location) => act(location, true)} /> : null}
   </View>;
 }
 
@@ -1050,32 +1164,35 @@ const styles = StyleSheet.create({
   homeControlRow: { minHeight: 70, flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 18 },
   homeControlActions: { flexDirection: "row", alignItems: "center", gap: 11 },
   homeHeaderIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: PAPER, borderWidth: 1, borderColor: BORDER, alignItems: "center", justifyContent: "center" },
-  homeAvatar: { width: 42, height: 42, borderRadius: 15, backgroundColor: "#E4E8EA", borderWidth: 2, borderColor: "#F4F5F0", alignItems: "center", justifyContent: "center", overflow: "hidden", shadowColor: INK, shadowOpacity: 0.12, shadowRadius: 7, elevation: 2 },
+  homeAvatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#E4E8EA", borderWidth: 2, borderColor: "#F4F5F0", alignItems: "center", justifyContent: "center", overflow: "hidden", shadowColor: INK, shadowOpacity: 0.12, shadowRadius: 7, elevation: 2 },
   homeAvatarImage: { width: 42, height: 42, borderRadius: 21 },
   homeAvatarInitials: { fontFamily: font.extraBold, fontSize: 12, color: "#840016" },
   homeIntro: { flex: 1, minWidth: 0, paddingRight: 10 },
   homeGreeting: { fontFamily: font.extraBold, fontSize: 22, lineHeight: 24, letterSpacing: -0.7, color: INK },
   homeDate: { fontFamily: font.bold, fontSize: 8.5, letterSpacing: 2.1, color: MUTED, marginTop: 6 },
-  homeHero: { minHeight: 236, borderRadius: 28, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", paddingHorizontal: 19, paddingTop: 18, paddingBottom: 16, overflow: "hidden", shadowColor: "#301728", shadowOpacity: 0.22, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 8 },
+  homeHero: { minHeight: 236, borderRadius: 28, paddingHorizontal: 19, paddingTop: 18, paddingBottom: 16, overflow: "hidden", shadowColor: "#4A000D", shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 14 }, elevation: 8 },
   homeHeroTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  homeHeroTag: { minHeight: 25, borderRadius: 13, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(132,0,22,.07)" },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: BLUE },
-  homeHeroTagText: { fontFamily: font.bold, fontSize: 7.5, letterSpacing: 1.25, color: "rgba(132,0,22,.82)" },
+  homeHeroTag: { minHeight: 25, borderRadius: 13, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,255,255,.14)" },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: WHITE },
+  homeHeroTagText: { fontFamily: font.bold, fontSize: 7.5, letterSpacing: 1.25, color: "rgba(255,255,255,.88)" },
   homeHeroPayoutWrap: { alignItems: "flex-end" },
-  homeHeroPayoutLabel: { fontFamily: font.bold, fontSize: 5.5, letterSpacing: 1.1, color: DIM },
-  homeHeroPayout: { fontFamily: font.extraBold, fontSize: 13, color: INK, marginTop: 2 },
+  homeHeroPayoutLabel: { fontFamily: font.bold, fontSize: 5.5, letterSpacing: 1.1, color: "rgba(255,255,255,.62)" },
+  homeHeroPayout: { fontFamily: font.extraBold, fontSize: 13, color: WHITE, marginTop: 2 },
   homeHeroMain: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 18 },
   homeDateTile: { width: 55, height: 62, borderRadius: 15, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", alignItems: "center", justifyContent: "center", shadowColor: "#301728", shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   homeDateMonth: { fontFamily: font.bold, fontSize: 8, letterSpacing: 1.5, color: BLUE },
   homeDateNumber: { fontFamily: font.extraBold, fontSize: 25, lineHeight: 27, color: INK },
-  homeHeroTitle: { fontFamily: font.extraBold, fontSize: 20, lineHeight: 23, letterSpacing: -0.45, color: INK },
-  homeHeroMeta: { fontFamily: font.regular, fontSize: 9.5, color: MUTED, marginTop: 5 },
-  homeHeroRole: { alignSelf: "flex-start", fontFamily: font.bold, fontSize: 6.5, letterSpacing: 1.2, color: "rgba(132,0,22,.80)", borderWidth: 1, borderColor: "rgba(132,0,22,.20)", borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, marginTop: 7 },
-  homeHeroSchedule: { minHeight: 58, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(132,0,22,.045)", borderWidth: 1, borderColor: "rgba(132,0,22,.10)", borderRadius: 17, marginTop: 16, paddingVertical: 10 },
-  homeHeroInfo: { flex: 1, minWidth: 0, alignItems: "center", paddingHorizontal: 7 },
-  homeHeroInfoBorder: { borderLeftWidth: 1, borderLeftColor: "rgba(132,0,22,.14)" },
-  homeHeroMicro: { fontFamily: font.bold, fontSize: 6.5, letterSpacing: 1.55, color: DIM },
-  homeHeroInfoValue: { fontFamily: font.extraBold, fontSize: 14, color: INK, marginTop: 4 },
+  homeHeroTitle: { fontFamily: font.extraBold, fontSize: 20, lineHeight: 23, letterSpacing: -0.45, color: WHITE },
+  homeHeroMeta: { fontFamily: font.regular, fontSize: 9.5, color: "rgba(255,255,255,.72)", marginTop: 5 },
+  homeHeroRole: { alignSelf: "flex-start", fontFamily: font.bold, fontSize: 6.5, letterSpacing: 1.2, color: WHITE, borderWidth: 1, borderColor: "rgba(255,255,255,.34)", backgroundColor: "rgba(255,255,255,.10)", borderRadius: 8, paddingHorizontal: 7, paddingVertical: 3, marginTop: 7 },
+  homeHeroClock: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 11, borderRadius: 17, backgroundColor: WHITE, marginTop: 16, paddingHorizontal: 14, shadowColor: "#31000A", shadowOpacity: 0.24, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  homeHeroClockIdle: { backgroundColor: "rgba(255,255,255,.88)", borderWidth: 1, borderColor: "rgba(255,255,255,.40)", shadowOpacity: 0 },
+  homeHeroClockIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(132,0,22,.08)" },
+  homeHeroClockCopy: { flex: 1, minWidth: 0 },
+  homeHeroClockTitle: { fontFamily: font.extraBold, fontSize: 11, letterSpacing: 1.25, color: BLUE },
+  homeHeroClockTitleIdle: { color: INK },
+  homeHeroClockMeta: { fontFamily: font.medium, fontSize: 8.5, color: MUTED, marginTop: 3 },
+  homeHeroClockMetaIdle: { color: MUTED },
   homeEmptyHero: { minHeight: 112, borderRadius: 20, backgroundColor: CARD, borderWidth: 1, borderColor: "rgba(132,0,22,.14)", padding: 18, flexDirection: "row", alignItems: "center", gap: 14 },
   homeEmptyTitle: { fontFamily: font.extraBold, fontSize: 16, color: INK },
   homeEmptyBody: { fontFamily: font.regular, fontSize: 10.5, lineHeight: 15, color: MUTED, marginTop: 3 },
@@ -1091,10 +1208,21 @@ const styles = StyleSheet.create({
   homeRadarTitle: { fontFamily: font.bold, fontSize: 11.5, color: INK },
   homeRadarMeta: { fontFamily: font.regular, fontSize: 8.5, color: MUTED, marginTop: 4 },
   homeRadarEmpty: { fontFamily: font.regular, fontSize: 10.5, color: MUTED, paddingVertical: 18 },
-  homeQuickRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 18 },
-  homeQuickAction: { width: "23%", alignItems: "center" },
-  homeQuickIcon: { width: 55, height: 55, borderRadius: 17, alignItems: "center", justifyContent: "center", shadowColor: "#301728", shadowOpacity: 0.22, shadowRadius: 11, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
-  homeQuickLabel: { fontFamily: font.medium, fontSize: 9.5, color: INK, marginTop: 7 },
+  homeAttendanceCard: { minHeight: 250, borderRadius: 28, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", padding: 18, shadowColor: "#301728", shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  homeAttendanceHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12 },
+  homeAttendanceTitle: { fontFamily: font.extraBold, fontSize: 15, color: INK },
+  homeAttendanceRange: { fontFamily: font.semiBold, fontSize: 8.5, color: MUTED },
+  homeAttendanceLoading: { minHeight: 176, alignItems: "center", justifyContent: "center" },
+  homeAttendancePlot: { height: 118, marginTop: 16 },
+  homeAttendanceAxis: { flexDirection: "row", justifyContent: "space-between", marginTop: 1 },
+  homeAttendanceAxisText: { fontFamily: font.regular, fontSize: 7.5, color: DIM },
+  homeAttendanceEmptyNote: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, backgroundColor: "rgba(132,0,22,.05)", marginTop: 11, paddingHorizontal: 11 },
+  homeAttendanceEmptyText: { flex: 1, fontFamily: font.medium, fontSize: 8.5, lineHeight: 12, color: MUTED },
+  homeAttendanceLegend: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: BORDER, marginTop: 13, paddingTop: 13 },
+  homeAttendanceLegendItem: { flexDirection: "row", alignItems: "center", gap: 7 },
+  homeAttendanceLegendLine: { width: 17, height: 3, borderRadius: 2 },
+  homeAttendanceLegendValue: { fontFamily: font.extraBold, fontSize: 12, color: INK },
+  homeAttendanceLegendLabel: { fontFamily: font.regular, fontSize: 7.5, color: MUTED, marginTop: 1 },
   homeOverviewCard: { minHeight: 166, borderRadius: 28, overflow: "hidden", backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", flexDirection: "row", alignItems: "center", paddingHorizontal: 18, paddingVertical: 16, shadowColor: "#301728", shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
   homeOverviewDonut: { width: 126, height: 126, alignItems: "center", justifyContent: "center" },
   homeOverviewDonutText: { position: "absolute", alignItems: "center" },
@@ -1200,11 +1328,7 @@ const styles = StyleSheet.create({
   primaryActionText: { fontFamily: font.bold, fontSize: 12, letterSpacing: 1.8, color: "#fff" },
   sheetInfo: { fontFamily: font.medium, fontSize: 11.5, lineHeight: 17, color: MUTED, textAlign: "center", backgroundColor: CARD, borderRadius: 12, padding: 14, marginTop: 18 },
   clockMapScreen: { flex: 1, backgroundColor: "#DCE4DF" },
-  clockMapShade: { position: "absolute", top: 0, left: 0, right: 0, height: 180 },
-  clockMapHeader: { position: "absolute", left: 18, right: 18, minHeight: 64, borderRadius: 22, paddingHorizontal: 18, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,.94)", shadowColor: INK, shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  clockMapHeaderTitle: { fontFamily: font.extraBold, fontSize: 21, color: INK, letterSpacing: -0.5 },
-  clockMapHeaderMeta: { fontFamily: font.bold, fontSize: 7.5, letterSpacing: 1.5, color: MUTED, marginTop: 4 },
-  clockMapRefresh: { width: 40, height: 40, borderRadius: 14, backgroundColor: PAPER, alignItems: "center", justifyContent: "center" },
+  clockMapRefresh: { position: "absolute", right: 18, width: 40, height: 40, borderRadius: 14, backgroundColor: "rgba(255,255,255,.94)", alignItems: "center", justifyContent: "center", shadowColor: INK, shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
   clockMapPanel: { position: "absolute", left: 14, right: 14, borderRadius: 26, padding: 20, backgroundColor: "rgba(255,255,255,.97)", borderWidth: 1, borderColor: "rgba(255,255,255,.65)", shadowColor: INK, shadowOpacity: 0.2, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
   clockMapStatusRow: { flexDirection: "row", alignItems: "center" },
   clockMapStatusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
@@ -1229,7 +1353,7 @@ const styles = StyleSheet.create({
   accountIdentityCard: { minHeight: 112, borderRadius: 26, flexDirection: "row", alignItems: "center", gap: 14, padding: 18, shadowColor: "#111527", shadowOpacity: 0.25, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 6 },
   accountIdentityCopy: { flex: 1, minWidth: 0 },
   accountEditButton: { width: 35, height: 35, borderRadius: 13, backgroundColor: "rgba(255,255,255,.14)", borderWidth: 1, borderColor: "rgba(255,255,255,.16)", alignItems: "center", justifyContent: "center" },
-  profileAvatar: { width: 66, height: 66, borderRadius: 22, borderWidth: 2, borderColor: "rgba(255,255,255,.34)", backgroundColor: "#9A7182", alignItems: "center", justifyContent: "center" }, profileAvatarImage: { width: 62, height: 62, borderRadius: 20 }, profileInitials: { fontFamily: font.extraBold, fontSize: 19, color: "#fff" },
+  profileAvatar: { width: 66, height: 66, borderRadius: 33, borderWidth: 2, borderColor: "rgba(255,255,255,.34)", backgroundColor: "#9A7182", alignItems: "center", justifyContent: "center" }, profileAvatarImage: { width: 62, height: 62, borderRadius: 31 }, profileInitials: { fontFamily: font.extraBold, fontSize: 19, color: "#fff" },
   cameraBadge: { position: "absolute", right: -2, bottom: -2, width: 22, height: 22, borderRadius: 8, backgroundColor: "#F4F5F0", borderWidth: 2, borderColor: "#36445A", alignItems: "center", justifyContent: "center" },
   profileName: { fontFamily: font.extraBold, fontSize: 18, color: "#fff" }, profileMeta: { fontFamily: font.regular, fontSize: 9.5, color: "rgba(255,255,255,.68)", marginTop: 3 },
   profileStats: { flexDirection: "row", paddingVertical: 17, marginTop: 13, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", borderRadius: 20, shadowColor: "#301728", shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 4 }, profileStat: { flex: 1, alignItems: "center", borderRightWidth: 1, borderRightColor: BORDER }, profileStatValue: { fontFamily: font.extraBold, fontSize: 18 }, profileStatLabel: { fontFamily: font.semiBold, fontSize: 7.5, lineHeight: 10.5, letterSpacing: 0.85, textAlign: "center", color: DIM, marginTop: 3 },

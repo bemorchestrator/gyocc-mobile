@@ -8,6 +8,7 @@ export interface ClockLocationEvidence {
   longitude: number;
   accuracyMeters: number;
   capturedAt: string;
+  isMocked?: boolean;
 }
 
 export interface PortalActivity {
@@ -39,6 +40,7 @@ export interface PortalActivity {
   attendanceMode?: "standard" | "full";
   canClockIn?: boolean;
   canClockOut?: boolean;
+  clockInBlockedReason?: { code: string; message: string } | null;
   payoutAmount: number;
   clockInWindow?: {
     opensAt: string;
@@ -205,9 +207,16 @@ export async function getMemberPortal(): Promise<MemberPortalData> {
   return data;
 }
 
-export async function clockInActivity(type: ActivityType, sourceId: string, location: ClockLocationEvidence, excuseReason?: string): Promise<void> {
-  if (isPreviewMode()) return;
-  await client.post("/api/profile/member-portal/clock-in", { type, sourceId, location, excuseReason });
+export interface ClockInResult {
+  success: true;
+  alreadyClockedIn?: boolean;
+  attendance?: { id: string; clockInAt?: string | null };
+}
+
+export async function clockInActivity(type: ActivityType, sourceId: string, location: ClockLocationEvidence, excuseReason?: string): Promise<ClockInResult> {
+  if (isPreviewMode()) return { success: true };
+  const { data } = await client.post<ClockInResult>("/api/profile/member-portal/clock-in", { type, sourceId, location, excuseReason });
+  return data;
 }
 
 export async function clockOutActivity(type: ActivityType, sourceId: string): Promise<void> {

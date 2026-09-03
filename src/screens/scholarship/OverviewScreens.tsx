@@ -18,9 +18,9 @@ export default function ScholarshipScreen({ navigation }: { navigation: Nav }) {
       <Text style={{ color: color.card, fontSize: 23, lineHeight: 28, fontWeight: '800' }}>{data.awardType}</Text>
       <View style={styles.between}><View><Text style={{ color: '#D8CACB', fontSize: 8 }}>QUARTER ATTENDANCE</Text><Text style={{ color: color.card, fontSize: 15, fontWeight: '700' }}>{Math.round(data.currentAttendanceRate)}%</Text></View><View><Text style={{ color: '#D8CACB', fontSize: 8 }}>NEXT REVIEW</Text><Text style={{ color: color.card, fontSize: 12, fontWeight: '700' }}>{dateLabel(data.renewalDate)}</Text></View></View>
     </LinearGradient>
-    <ActionLink icon="analytics-outline" title="Eligibility & attendance" body="See the current quarter calculation and standing." onPress={() => navigation.navigate('ScholarshipEligibility')} />
-    <ActionLink icon="document-text-outline" title="Application" body="Apply, renew and manage supporting documents." onPress={() => navigation.navigate('ScholarshipApplication')} />
-    <ActionLink icon="wallet-outline" title="Awards & payments" body="Review award history and stipend releases." onPress={() => navigation.navigate('ScholarshipAwards')} />
+    <ActionLink plain icon="analytics-outline" title="Eligibility & attendance" body="See the current quarter calculation and standing." onPress={() => navigation.navigate('ScholarshipEligibility')} />
+    <ActionLink plain icon="document-text-outline" title="Application" body="Apply, renew and manage supporting documents." onPress={() => navigation.navigate('ScholarshipApplication')} />
+    <ActionLink plain icon="wallet-outline" title="Awards & payments" body="Review award history and stipend releases." onPress={() => navigation.navigate('ScholarshipAwards')} />
   </Page>
 }
 

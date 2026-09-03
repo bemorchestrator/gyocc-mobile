@@ -2,6 +2,19 @@ import axios from "axios";
 import { getSessionValue, setSessionValue } from "../utils/sessionStorage";
 import { BASE_URL, COOKIE_KEY } from "./config";
 
+export interface ApiClientError {
+  message: string;
+  status?: number;
+  code?: string;
+  details?: Record<string, unknown>;
+  clockInWindow?: {
+    opensAt?: string;
+    closesAt?: string;
+    isOpen?: boolean;
+    isUpcoming?: boolean;
+    isPast?: boolean;
+  };
+}
 
 if (__DEV__) {
   console.log(`[API] Base URL ${BASE_URL}`);
@@ -77,7 +90,18 @@ client.interceptors.response.use(
     if (__DEV__ && !skipErrorLog) {
       console.error(`[API Error] ${error.response?.status}: ${message}`);
     }
-    return Promise.reject({ message, status: error.response?.status });
+    const payload = error.response?.data as Record<string, unknown> | undefined;
+    return Promise.reject({
+      message,
+      status: error.response?.status,
+      code: typeof payload?.code === "string" ? payload.code : undefined,
+      details: payload?.details && typeof payload.details === "object"
+        ? payload.details as Record<string, unknown>
+        : undefined,
+      clockInWindow: payload?.clockInWindow && typeof payload.clockInWindow === "object"
+        ? payload.clockInWindow as ApiClientError["clockInWindow"]
+        : undefined,
+    } satisfies ApiClientError);
   }
 );
 
