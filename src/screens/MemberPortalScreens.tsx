@@ -328,18 +328,6 @@ function activityDate(date: string) {
   return format(new Date(date), "MMM d");
 }
 
-function mimeTypeFromUri(uri: string) {
-  const path = uri.split("?")[0].toLowerCase();
-  if (path.endsWith(".jpg") || path.endsWith(".jpeg")) return "image/jpeg";
-  if (path.endsWith(".png")) return "image/png";
-  if (path.endsWith(".webp")) return "image/webp";
-  return null;
-}
-
-function normalizePickedImageMimeType(uri: string, mimeType?: string | null) {
-  return mimeTypeFromUri(uri) || mimeType || "image/jpeg";
-}
-
 function describePreferenceChange(patch: Partial<MemberSettingsPreferences>): string {
   const messages: string[] = [];
   if ("rsvpReminders" in patch) messages.push(`RSVP reminders ${patch.rsvpReminders ? "on" : "off"}`);
@@ -2449,22 +2437,7 @@ function ProfileContent({
       return;
     }
 
-    const mimeType = normalizePickedImageMimeType(asset.uri, asset.mimeType);
-    if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      Toast.show({ type: "error", text1: "Unsupported image", text2: "Use a JPEG, PNG, or WebP photo." });
-      return;
-    }
-
-    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-      Toast.show({ type: "error", text1: "Photo too large", text2: "Choose a photo that is 5MB or smaller." });
-      return;
-    }
-
-    avatarMutation.mutate({
-      uri: asset.uri,
-      fileName: asset.fileName || `profile-photo.${mimeType.split("/")[1].replace("jpeg", "jpg")}`,
-      mimeType,
-    });
+    avatarMutation.mutate({ uri: asset.uri });
   };
 
   const handleAvatarPress = () => {

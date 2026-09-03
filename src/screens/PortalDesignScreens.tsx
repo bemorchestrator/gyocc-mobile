@@ -984,12 +984,7 @@ export function ProfileScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.85 });
     if (result.canceled || !result.assets[0]?.uri) return;
     const asset = result.assets[0];
-    const mimeType = asset.mimeType || (asset.uri.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
-    if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
-      Toast.show({ type: "error", text1: "Photo too large", text2: "Choose an image under 5 MB." });
-      return;
-    }
-    uploadAvatar.mutate({ uri: asset.uri, fileName: asset.fileName || `profile.${mimeType === "image/png" ? "png" : "jpg"}`, mimeType });
+    uploadAvatar.mutate({ uri: asset.uri });
   };
   const avatarPress = () => {
     if (!portal) return;

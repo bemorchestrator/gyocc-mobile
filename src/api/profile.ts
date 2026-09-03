@@ -1,5 +1,6 @@
 import client from "./client";
 import * as FileSystem from "expo-file-system/legacy";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { BASE_URL, COOKIE_KEY } from "./config";
 import { getSessionValue } from "../utils/sessionStorage";
 
@@ -34,15 +35,27 @@ export interface AvatarUploadAsset {
 }
 
 export async function uploadProfileAvatar(asset: AvatarUploadAsset): Promise<{ avatarUrl: string }> {
-  const mimeType = asset.mimeType || "image/jpeg";
+  // Photo-library assets can be HEIC/AVIF or several megabytes even after the
+  // system crop UI. Normalize them here so every profile screen uploads the
+  // same small, server-supported payload instead of relying on picker metadata.
+  const imageContext = ImageManipulator.manipulate(asset.uri);
+  imageContext.resize({ width: 1024 });
+  const imageRef = await imageContext.renderAsync();
+  const preparedImage = await imageRef.saveAsync({
+    compress: 0.78,
+    format: SaveFormat.JPEG,
+  });
+
   const cookie = await getSessionValue(COOKIE_KEY);
-  const response = await FileSystem.uploadAsync(`${BASE_URL}/api/profile/avatar`, asset.uri, {
+  const response = await FileSystem.uploadAsync(`${BASE_URL}/api/profile/avatar`, preparedImage.uri, {
     httpMethod: "POST",
     uploadType: FileSystem.FileSystemUploadType.MULTIPART,
     fieldName: "avatar",
-    mimeType,
+    mimeType: "image/jpeg",
     headers: {
       Accept: "application/json",
+      Origin: BASE_URL,
+      "X-GYOCC-Client": "mobile",
       ...(cookie ? { Cookie: cookie, "X-GYOCC-Session-Cookie": cookie } : {}),
     },
   });
