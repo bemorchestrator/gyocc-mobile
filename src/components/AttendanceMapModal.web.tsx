@@ -38,11 +38,15 @@ export default function AttendanceMapModal({
     : undefined;
 
   useEffect(() => {
-    if (!visible || action !== "in") return;
+    if (!visible) return;
     setLocation(undefined);
     setSubmissionError(undefined);
     setClockMs(Date.now());
     setLocationMessage("Finding your location…");
+    if (action === "out") {
+      setLocationMessage("Review the venue, then confirm that you are finishing this activity.");
+      return;
+    }
     if (!navigator.geolocation) {
       setLocationMessage("Location services are not available in this browser.");
       return;
@@ -116,7 +120,7 @@ export default function AttendanceMapModal({
           <Ionicons name="close" size={24} color="#15231D" />
         </TouchableOpacity>
         <View style={styles.sheet}>
-          <Text style={styles.eyebrow}>CONFIRM LOCATION</Text>
+          <Text style={styles.eyebrow}>{action === "in" ? "CONFIRM LOCATION" : "FINISH ATTENDANCE"}</Text>
           <Text style={styles.venue}>{venueName || "Activity venue"}</Text>
           <Text style={styles.address}>{venueAddress || "No venue address was provided."}</Text>
           <Text style={styles.location}>{displayedLocationMessage}</Text>

@@ -82,7 +82,7 @@ export default function AttendanceMapModal({
     setClockMs(Date.now());
     setLocationMessage("Finding your location…");
     if (action === "out") {
-      setLocationMessage("Location verification is required for clock-in only.");
+      setLocationMessage("Review the venue, then confirm that you are finishing this activity.");
       return;
     }
 
@@ -223,11 +223,11 @@ export default function AttendanceMapModal({
 
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 16, 26) }]}>
           <View style={styles.handle} />
-          <Text style={styles.eyebrow}>CONFIRM LOCATION</Text>
+          <Text style={styles.eyebrow}>{action === "in" ? "CONFIRM LOCATION" : "FINISH ATTENDANCE"}</Text>
           <Text style={styles.venue}>{venueName || "Activity venue"}</Text>
           <Text style={styles.address}>{venueAddress || "No venue address was provided."}</Text>
           <View style={styles.locationRow}>
-            <Ionicons name="navigate-circle" size={19} color="#0D9488" />
+            <Ionicons name={action === "in" ? "navigate-circle" : "checkmark-circle"} size={19} color="#0D9488" />
             <Text style={styles.locationText}>{displayedLocationMessage}</Text>
           </View>
           {action === "in" ? (

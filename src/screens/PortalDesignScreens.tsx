@@ -73,6 +73,7 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 import AttendanceMapModal from "../components/AttendanceMapModal";
 import { clockInFailureFeedback } from "../utils/clockInFeedback";
 import ClockMapBackground from "../components/ClockMapBackground";
+import { ATTENDANCE_QUERY_KEYS, refreshAttendanceData } from "../api/attendanceCache";
 
 const INK = "#111527";
 const BLUE = "#840016";
@@ -133,8 +134,11 @@ function whenText(date: Date) {
 
 function clockText(call?: PortalActivity) {
   if (!call) return "No upcoming call";
-  if (call.canClockOut) return "You are clocked in";
-  if (call.clockInAt) return "You are clocked in";
+  if (call.clockOutAt) return `Clocked out at ${format(new Date(call.clockOutAt), "h:mm a")} · ${call.attendanceStatus || "Completed"}`;
+  if (call.clockInAt) {
+    const nextStep = call.requiresClockOut ? " · Clock out after the call" : " · Attendance recorded";
+    return `Clocked in at ${format(new Date(call.clockInAt), "h:mm a")} · ${call.attendanceStatus || "Present"}${call.locationVerified ? " · Location verified" : ""}${nextStep}`;
+  }
   if (call.clockInBlockedReason) return call.clockInBlockedReason.message;
   if (call.clockInWindow?.isOpen && call.locationConfigured === false) return "Clock-in is disabled until an administrator sets the venue pin";
   if (call.clockInWindow?.isOpen || call.canClockIn) return "Clock-in window is open";
@@ -233,11 +237,11 @@ export function PortalHomeScreen() {
   const queryClient = useQueryClient();
   const portalQuery = usePortal();
   const notifications = useQuery({ queryKey: ["notifications"], queryFn: () => getNotifications(50), retry: false });
-  const attendanceOverview = useQuery({ queryKey: ["member-attendance-overview"], queryFn: () => getAttendance(), retry: false });
+  const attendanceOverview = useQuery({ queryKey: ATTENDANCE_QUERY_KEYS.overview, queryFn: () => getAttendance(), retry: false });
   const refresh = () => Promise.all([
     queryClient.refetchQueries({ queryKey: ["member-portal"] }),
     queryClient.refetchQueries({ queryKey: ["notifications"] }),
-    queryClient.refetchQueries({ queryKey: ["member-attendance-overview"] }),
+    queryClient.refetchQueries({ queryKey: ATTENDANCE_QUERY_KEYS.overview }),
   ]);
 
   return (
@@ -372,15 +376,9 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
   const bottom = 106;
   const hasData = total > 0;
   const hasTrendData = total >= 3;
-  // A single cumulative attendance record becomes one jump followed by a long
-  // flat line. Keep the chart useful until there are enough records to form a
-  // real trend; these preview values never replace the real legend totals.
-  const previewSeries = days.map((_, index) => ({
-    total: 5.4 + (index * .12) + (Math.sin(index * .48) * .72),
-    present: 3.55 + (index * .08) + (Math.sin((index * .43) + .8) * .58),
-    absent: 1.35 + (index * .035) + (Math.sin((index * .56) + 2.1) * .34),
-  }));
-  const plottedSeries = hasTrendData ? series : previewSeries;
+  // Never draw sample/preview data here: this chart is a direct projection of
+  // the canonical attendance records, even when there is only one point.
+  const plottedSeries = series;
   const max = Math.max(1, ...plottedSeries.flatMap((point) => [point.present, point.absent, point.total]));
   const chartPoints = (key: "present" | "absent" | "total") => plottedSeries.map((point, index) => {
     const x = index * (chartWidth / (plottedSeries.length - 1));
@@ -411,9 +409,9 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
       <View style={styles.homeAttendancePlot}>
         <Svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none">
           {[top, (top + bottom) / 2, bottom].map((y) => <Line key={y} x1="0" y1={y} x2={chartWidth} y2={y} stroke={BORDER} strokeWidth="1" />)}
-          <Path d={curvedPath("total")} fill="none" stroke={INK} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .28} strokeDasharray={hasTrendData ? undefined : "6 5"} />
-          <Path d={curvedPath("present")} fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .38} strokeDasharray={hasTrendData ? undefined : "6 5"} />
-          <Path d={curvedPath("absent")} fill="none" stroke={BLUE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasTrendData ? 1 : .34} strokeDasharray={hasTrendData ? undefined : "6 5"} />
+          <Path d={curvedPath("total")} fill="none" stroke={INK} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
+          <Path d={curvedPath("present")} fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
+          <Path d={curvedPath("absent")} fill="none" stroke={BLUE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
         </Svg>
       </View>
       <View style={styles.homeAttendanceAxis}><Text style={styles.homeAttendanceAxisText}>{format(days[0], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[14], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[29], "MMM d")}</Text></View>
@@ -445,6 +443,7 @@ type ScheduleView = "upcoming" | "calendar" | "history";
 export function ScheduleScreen({ route }: { route?: { params?: { sourceType?: string; sourceId?: string; focusNonce?: number } } }) {
   const query = usePortal();
   const queryClient = useQueryClient();
+  const navigation = useNavigation<any>();
   const [view, setView] = useState<ScheduleView>("upcoming");
   const preferences = useQuery({ queryKey: ["member-preferences"], queryFn: getPreferences, retry: false });
   const appliedDefault = React.useRef(false);
@@ -475,27 +474,6 @@ export function ScheduleScreen({ route }: { route?: { params?: { sourceType?: st
     },
     onError: (error: { message?: string }) => Toast.show({ type: "error", text1: "RSVP failed", text2: error.message }),
   });
-  const clockIn = useMutation({
-    mutationFn: ({ activity, location }: { activity: PortalActivity; location: ClockLocationEvidence }) => clockInActivity(activity.type, activity.sourceId, location),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
-      Toast.show({ type: "success", text1: result.alreadyClockedIn ? "Already clocked in" : "You're clocked in", text2: result.alreadyClockedIn ? "Your original clock-in time was kept." : undefined });
-    },
-    onError: (error: unknown) => {
-      const feedback = clockInFailureFeedback(error);
-      if (feedback.action === "refresh-activity") void queryClient.invalidateQueries({ queryKey: ["member-portal"] });
-      Toast.show({ type: "error", text1: feedback.title, text2: feedback.message });
-    },
-  });
-  const clockOut = useMutation({
-    mutationFn: (activity: PortalActivity) => clockOutActivity(activity.type, activity.sourceId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
-      Toast.show({ type: "success", text1: "Clock-out recorded" });
-    },
-    onError: (error: { message?: string }) => Toast.show({ type: "error", text1: "Clock-out unavailable", text2: error.message }),
-  });
-
   return <Screen refresh={() => query.refetch()} header={<PageHeader title="Schedule" />}>
     <Segment items={[["upcoming", "UPCOMING"], ["calendar", "CALENDAR"], ["history", "HISTORY"]]} active={view} setActive={(value) => setView(value as ScheduleView)} />
     <PortalState query={query}>{(portal) => view === "history"
@@ -506,11 +484,14 @@ export function ScheduleScreen({ route }: { route?: { params?: { sourceType?: st
     <ActivityDetailModal
       activity={freshSelected}
       visible={Boolean(freshSelected)}
-      busy={rsvp.isPending || clockIn.isPending || clockOut.isPending}
+      busy={rsvp.isPending}
       onClose={() => setSelected(null)}
       onRsvp={(confirmation) => freshSelected && rsvp.mutate({ activity: freshSelected, confirmation })}
-      onClockIn={(location) => freshSelected ? clockIn.mutateAsync({ activity: freshSelected, location }).then(() => undefined) : Promise.resolve()}
-      onClockOut={() => freshSelected && clockOut.mutate(freshSelected)}
+      onOpenClock={() => {
+        if (!freshSelected) return;
+        setSelected(null);
+        navigation.navigate("Clock", { sourceType: freshSelected.type, sourceId: freshSelected.sourceId, focusNonce: Date.now() });
+      }}
     />
   </Screen>;
 }
@@ -596,20 +577,22 @@ function CalendarView({ portal, onSelect }: { portal: MemberPortalData; onSelect
 }
 
 function HistoryList({ portal }: { portal: MemberPortalData }) {
-  return <View style={{ marginTop: 18 }}><Text style={styles.sectionLabel}>ATTENDANCE HISTORY</Text>{portal.attendance.history.map((item) => <View key={item.id} style={styles.historyRow}>
+  const history = portal.attendance.history.filter((item) => new Date(item.date) <= new Date());
+  return <View style={{ marginTop: 18 }}><Text style={styles.sectionLabel}>ATTENDANCE HISTORY</Text>{history.map((item) => <View key={item.id} style={styles.historyRow}>
     <Text style={styles.historyDate}>{format(new Date(item.date), "MM.dd")}</Text>
     <View style={{ flex: 1 }}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{item.sourceType.toUpperCase()} · {item.role.toUpperCase()}</Text></View>
-    <Status label={item.attended ? "✓ PRESENT" : item.confirmation === "Declined" ? "✕ DECLINED" : "— ABSENT"} color={item.attended ? GREEN : RED} />
-  </View>)}</View>;
+    <Status label={item.attended ? `✓ ${(item.attendanceStatus || "Present").toUpperCase()}` : item.attendanceStatus === "Pending" ? "— PENDING" : `✕ ${(item.attendanceStatus || "Absent").toUpperCase()}`} color={item.attended ? GREEN : item.attendanceStatus === "Pending" ? GOLD : RED} />
+  </View>)}{!history.length ? <Text style={styles.emptyText}>No attendance has been recorded yet.</Text> : null}</View>;
 }
 
 function ActivityRow({ activity, onPress }: { activity: PortalActivity; onPress: () => void }) {
   const color = activity.type === "gig" ? BLUE : activity.type === "rehearsal" ? GREEN : "#D9A407";
   const confirmation = (activity.confirmation || "Pending").toUpperCase();
   const stateColor = confirmation === "CONFIRMED" ? GREEN : confirmation === "DECLINED" ? RED : GOLD;
+  const recorded = Boolean(activity.clockInAt || activity.clockOutAt || (activity.attendanceStatus && activity.attendanceStatus !== "Pending"));
   return <TouchableOpacity style={styles.activityRow} onPress={onPress} activeOpacity={0.72}>
     <View style={styles.dateTile}><Text style={styles.dateNumber}>{format(new Date(activity.date), "dd")}</Text><Text style={styles.dateMonth}>{format(new Date(activity.date), "MMM").toUpperCase()}</Text></View>
-    <View style={[styles.activityMain, { borderLeftColor: color }]}><Text style={styles.rowTitle}>{activity.title}</Text><Text style={styles.rowMeta}>{activity.type.toUpperCase()} · {callTime(activity)} · {(activity.venueName || "TBA").toUpperCase()}</Text><Status label={confirmation === "PENDING" ? "RSVP NEEDED" : `✓ ${confirmation}`} color={stateColor} /></View>
+    <View style={[styles.activityMain, { borderLeftColor: color }]}><Text style={styles.rowTitle}>{activity.title}</Text><Text style={styles.rowMeta}>{activity.type.toUpperCase()} · {callTime(activity)} · {(activity.venueName || "TBA").toUpperCase()}</Text><Status label={recorded ? `✓ ${(activity.clockOutAt ? "CLOCKED OUT" : activity.attendanceStatus || "CLOCKED IN").toUpperCase()}` : confirmation === "PENDING" ? "RSVP NEEDED" : `✓ ${confirmation}`} color={recorded ? GREEN : stateColor} /></View>
     <Ionicons name="chevron-forward" size={15} color={DIM} />
   </TouchableOpacity>;
 }
@@ -620,18 +603,15 @@ function ActivityDetailModal({
   busy,
   onClose,
   onRsvp,
-  onClockIn,
-  onClockOut,
+  onOpenClock,
 }: {
   activity: PortalActivity | null;
   visible: boolean;
   busy: boolean;
   onClose: () => void;
   onRsvp: (confirmation: "Confirmed" | "Declined") => void;
-  onClockIn: (location: ClockLocationEvidence) => Promise<void>;
-  onClockOut: () => void;
+  onOpenClock: () => void;
 }) {
-  const [mapAction, setMapAction] = useState<"in" | "out" | null>(null);
   const insets = useSafeAreaInsets();
   if (!activity) return null;
   const confirmed = activity.confirmation === "Confirmed";
@@ -656,21 +636,10 @@ function ActivityDetailModal({
           <TouchableOpacity disabled={busy} style={[styles.actionButton, declined && styles.actionButtonDanger]} onPress={() => onRsvp("Declined")}><Text style={[styles.actionButtonText, declined && styles.actionButtonTextLight]}>{declined ? "✕ DECLINED" : "DECLINE"}</Text></TouchableOpacity>
         </View>
         <Text style={styles.sectionLabel}>ATTENDANCE</Text>
-        {canClockOut
-          ? <TouchableOpacity disabled={busy} style={styles.primaryAction} onPress={() => setMapAction("out")}><Text style={styles.primaryActionText}>{busy ? "PLEASE WAIT…" : "CLOCK OUT"}</Text></TouchableOpacity>
-          : <TouchableOpacity
-              disabled={busy || !canClockIn}
-              accessibilityState={{ disabled: !canClockIn }}
-              style={[styles.primaryAction, !canClockIn && styles.primaryActionDisabled]}
-              onPress={() => setMapAction("in")}
-            >
-              <Text style={[styles.primaryActionText, !canClockIn && styles.primaryActionTextDisabled]}>{busy ? "PLEASE WAIT…" : "CLOCK IN"}</Text>
-            </TouchableOpacity>}
-        {canClockOut || canClockIn ? null : <Text style={styles.sheetInfo}>{clockText(activity)}</Text>}
-        <AttendanceMapModal visible={mapAction !== null} action={mapAction || "in"} venueName={activity.venueName}
-          venueAddress={activity.venueAddress} venueLatitude={activity.venueLatitude} venueLongitude={activity.venueLongitude}
-          geofenceRadiusMeters={activity.geofenceRadiusMeters} busy={busy} onClose={() => setMapAction(null)}
-          onConfirm={(location) => mapAction === "out" ? Promise.resolve(onClockOut()) : location ? onClockIn(location) : Promise.reject(new Error("GPS location required"))} />
+        {canClockOut || canClockIn ? <TouchableOpacity disabled={busy} style={styles.primaryAction} onPress={onOpenClock}>
+          <Text style={styles.primaryActionText}>{canClockOut ? "OPEN CLOCK OUT" : "OPEN CLOCK IN"}</Text>
+        </TouchableOpacity> : null}
+        {activity.clockInAt ? <View style={styles.attendanceConfirmation}><Ionicons name="checkmark-circle" size={19} color={GREEN} /><Text style={styles.attendanceConfirmationText}>{clockText(activity)}</Text></View> : canClockOut || canClockIn ? null : <Text style={styles.sheetInfo}>{clockText(activity)}</Text>}
       </View>
     </View>
   </Modal>;
@@ -687,30 +656,51 @@ function Status({ label, color }: { label: string; color: string }) {
 export function ClockScreen({ route }: { route?: { params?: { sourceType?: string; sourceId?: string; focusNonce?: number } } }) {
   const query = usePortal();
   const queryClient = useQueryClient();
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const calls = sortedCalls(query.data);
   const requestedCall = route?.params?.sourceType && route.params.sourceId
     ? calls.find((item) => item.type === route.params?.sourceType && item.sourceId === route.params?.sourceId)
     : undefined;
-  const call = requestedCall
+  const serverCall = requestedCall
     ?? calls.find((item) => item.canClockOut || item.canClockIn)
+    ?? calls.find((item) => item.clockOutAt && new Date(item.endDate || item.date) >= new Date())
     ?? calls.find((item) => item.clockInWindow?.isUpcoming && !item.clockInBlockedReason)
     ?? calls[0];
   const [busy, setBusy] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const [completed, setCompleted] = useState<{ activity: PortalActivity; clockOutAt: string } | null>(null);
+  const [localAttendance, setLocalAttendance] = useState<PortalActivity | null>(null);
+  const call = serverCall && localAttendance
+    && serverCall.type === localAttendance.type
+    && serverCall.sourceId === localAttendance.sourceId
+      ? { ...serverCall, ...localAttendance }
+      : serverCall;
   const act = async (location?: ClockLocationEvidence, propagateError = false) => {
     if (!call) return;
     setBusy(true);
     try {
       const wasClockOut = Boolean(call.canClockOut);
       let alreadyClockedIn = false;
-      if (wasClockOut) await clockOutActivity(call.type, call.sourceId);
-      else {
+      let recordedClockOutAt: string | undefined;
+      if (wasClockOut) {
+        const result = await clockOutActivity(call.type, call.sourceId);
+        recordedClockOutAt = result.attendance.clockOutAt ?? new Date().toISOString();
+      } else {
         if (!location) throw new Error("A current GPS location is required");
         const result = await clockInActivity(call.type, call.sourceId, location);
         alreadyClockedIn = result.alreadyClockedIn === true;
+        setLocalAttendance({
+          ...call,
+          attended: true,
+          attendanceStatus: result.attendance.status,
+          clockInAt: result.attendance.clockInAt ?? call.clockInAt ?? new Date().toISOString(),
+          canClockIn: false,
+          canClockOut: Boolean(call.requiresClockOut),
+        });
       }
-      await queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      await refreshAttendanceData(queryClient);
+      if (wasClockOut) setCompleted({ activity: call, clockOutAt: recordedClockOutAt! });
       Toast.show({ type: "success", text1: wasClockOut ? "Clock-out recorded" : alreadyClockedIn ? "Already clocked in" : "You're clocked in", text2: alreadyClockedIn ? "Your original clock-in time was kept." : undefined });
     } catch (error) {
       const feedback = call.canClockOut ? null : clockInFailureFeedback(error);
@@ -719,28 +709,51 @@ export function ClockScreen({ route }: { route?: { params?: { sourceType?: strin
       if (propagateError) throw error;
     } finally { setBusy(false); }
   };
+
+  if (completed) {
+    const activityName = completed.activity.type === "gig" ? "gig" : completed.activity.type === "event" ? "event" : "rehearsal";
+    return <View style={[styles.clockCompleteScreen, { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 96 }]}>
+      <View style={styles.clockCompleteGlow}><Ionicons name="checkmark" size={54} color="#fff" /></View>
+      <Text style={styles.clockCompleteEyebrow}>CLOCK-OUT COMPLETE</Text>
+      <Text style={styles.clockCompleteTitle}>You successfully finished this {activityName}.</Text>
+      <Text style={styles.clockCompleteCall}>{completed.activity.title}</Text>
+      <View style={styles.clockCompleteDetails}>
+        <View style={styles.clockCompleteDetailRow}><Text style={styles.clockCompleteDetailLabel}>CLOCKED OUT</Text><Text style={styles.clockCompleteDetailValue}>{format(new Date(completed.clockOutAt), "h:mm a")}</Text></View>
+        <View style={styles.clockCompleteDivider} />
+        <View style={styles.clockCompleteDetailRow}><Text style={styles.clockCompleteDetailLabel}>ATTENDANCE</Text><Text style={[styles.clockCompleteDetailValue, { color: GREEN }]}>COMPLETED</Text></View>
+      </View>
+      <Text style={styles.clockCompleteMessage}>Your attendance record and dashboard counters are up to date.</Text>
+      <TouchableOpacity style={styles.clockCompletePrimary} onPress={() => { setCompleted(null); navigation.navigate("Home"); }}>
+        <Ionicons name="home" size={20} color="#fff" /><Text style={styles.clockCompletePrimaryText}>GO TO HOME</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.clockCompleteSecondary} onPress={() => { setCompleted(null); navigation.navigate("Schedule"); }}>
+        <Text style={styles.clockCompleteSecondaryText}>VIEW SCHEDULE</Text>
+      </TouchableOpacity>
+    </View>;
+  }
+
   return <View style={styles.clockMapScreen}>
     {call ? <ClockMapBackground venueName={call.venueName} venueAddress={call.venueAddress}
       venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters} /> : null}
-    <TouchableOpacity accessibilityLabel="Refresh clock-in details" style={[styles.clockMapRefresh, { top: insets.top + 12 }]} onPress={() => void query.refetch()}>
+    <TouchableOpacity accessibilityLabel="Refresh clock-in details" style={[styles.clockMapRefresh, { top: insets.top + 12 }]} onPress={() => { setLocalAttendance(null); void query.refetch(); }}>
       <Ionicons name="refresh" size={20} color={INK} />
     </TouchableOpacity>
     <PortalState query={query}>{() => call ? <View style={[styles.clockMapPanel, { bottom: Math.max(insets.bottom + 88, 104) }]}>
       <View style={styles.clockMapStatusRow}>
-        <View style={[styles.clockMapStatusDot, { backgroundColor: call.canClockOut || call.canClockIn ? GREEN : GOLD }]} />
-        <Text style={styles.clockMapStatus}>{call.canClockOut || call.clockInAt ? "CLOCKED IN" : call.clockInBlockedReason ? "ACTION NEEDED" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text>
-        <Text style={styles.clockMapTime}>{call.canClockOut ? callTime(call) : call.clockInWindow?.opensAt ? format(new Date(call.clockInWindow.opensAt), "h:mm a") : callTime(call)}</Text>
+        <View style={[styles.clockMapStatusDot, { backgroundColor: call.clockInAt || call.canClockIn ? GREEN : GOLD }]} />
+        <Text style={styles.clockMapStatus}>{call.clockOutAt ? "CLOCKED OUT" : call.clockInAt ? "CLOCKED IN" : call.clockInBlockedReason ? "ACTION NEEDED" : call.clockInWindow?.isOpen && call.locationConfigured === false ? "VENUE PIN NEEDED" : call.canClockIn ? "WINDOW OPEN" : "NEXT WINDOW"}</Text>
+        <Text style={styles.clockMapTime}>{call.clockOutAt ? format(new Date(call.clockOutAt), "h:mm a") : call.clockInAt ? format(new Date(call.clockInAt), "h:mm a") : call.clockInWindow?.opensAt ? format(new Date(call.clockInWindow.opensAt), "h:mm a") : callTime(call)}</Text>
       </View>
       <Text style={styles.clockMapCall}>{call.title}</Text>
       <View style={styles.clockMapLocationRow}><Ionicons name="location" size={16} color={BLUE} /><Text style={styles.clockMapLocation} numberOfLines={2}>{call.venueAddress || call.venueName || "Venue to be announced"}</Text></View>
-      {!call.canClockIn && !call.canClockOut ? <Text style={styles.clockMapMessage}>{clockText(call)}</Text> : null}
-      <TouchableOpacity disabled={busy || (!call.canClockOut && !call.canClockIn)} onPress={() => call.canClockOut ? void act() : setMapOpen(true)}
+      {call.clockInAt ? <View style={styles.attendanceConfirmation}><Ionicons name="checkmark-circle" size={19} color={GREEN} /><Text style={styles.attendanceConfirmationText}>{clockText(call)}</Text></View> : !call.canClockIn && !call.canClockOut ? <Text style={styles.clockMapMessage}>{clockText(call)}</Text> : null}
+      <TouchableOpacity disabled={busy || (!call.canClockOut && !call.canClockIn)} onPress={() => setMapOpen(true)}
         style={[styles.clockMapButton, (!call.canClockOut && !call.canClockIn) && styles.disabled]}>
-        {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name={call.canClockOut ? "stop-circle" : "navigate-circle"} size={24} color="#fff" />}
-        <Text style={styles.clockMapButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : call.clockInAt ? "CLOCKED IN" : "CLOCK IN"}</Text>
+        {busy ? <ActivityIndicator color="#fff" /> : <Ionicons name={call.canClockOut ? "stop-circle" : call.clockInAt ? "checkmark-circle" : "navigate-circle"} size={24} color="#fff" />}
+        <Text style={styles.clockMapButtonText}>{busy ? "PLEASE WAIT" : call.canClockOut ? "CLOCK OUT" : call.clockOutAt ? "ATTENDANCE COMPLETED" : call.clockInAt ? "ATTENDANCE RECORDED" : "CLOCK IN"}</Text>
       </TouchableOpacity>
     </View> : <View style={styles.clockMapEmpty}><Text style={styles.emptyText}>No call is available for clock-in.</Text></View>}</PortalState>
-    {call ? <AttendanceMapModal visible={mapOpen} action="in" venueName={call.venueName} venueAddress={call.venueAddress}
+    {call ? <AttendanceMapModal visible={mapOpen} action={call.canClockOut ? "out" : "in"} venueName={call.venueName} venueAddress={call.venueAddress}
       venueLatitude={call.venueLatitude} venueLongitude={call.venueLongitude} geofenceRadiusMeters={call.geofenceRadiusMeters}
       busy={busy} onClose={() => setMapOpen(false)} onConfirm={(location) => act(location, true)} /> : null}
   </View>;
@@ -1338,9 +1351,26 @@ const styles = StyleSheet.create({
   clockMapLocationRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 7 },
   clockMapLocation: { flex: 1, fontFamily: font.medium, fontSize: 11.5, lineHeight: 16, color: MUTED },
   clockMapMessage: { fontFamily: font.semiBold, fontSize: 10.5, lineHeight: 15, color: "#8A6117", backgroundColor: "rgba(224,178,92,.12)", borderRadius: 10, padding: 10, marginTop: 12 },
+  attendanceConfirmation: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(27,140,55,.10)", borderWidth: 1, borderColor: "rgba(27,140,55,.22)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginTop: 12 },
+  attendanceConfirmationText: { flex: 1, fontFamily: font.semiBold, fontSize: 10.5, lineHeight: 15, color: GREEN },
   clockMapButton: { height: 60, borderRadius: 18, backgroundColor: BLUE, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 17, shadowColor: BLUE, shadowOpacity: 0.28, shadowRadius: 15, shadowOffset: { width: 0, height: 7 }, elevation: 5 },
   clockMapButtonText: { fontFamily: font.extraBold, fontSize: 16, letterSpacing: 1.5, color: "#fff" },
   clockMapEmpty: { position: "absolute", left: 20, right: 20, top: "42%", borderRadius: 22, padding: 24, backgroundColor: "rgba(255,255,255,.95)" },
+  clockCompleteScreen: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 26, backgroundColor: PAPER },
+  clockCompleteGlow: { width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center", backgroundColor: GREEN, shadowColor: GREEN, shadowOpacity: .3, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  clockCompleteEyebrow: { marginTop: 26, fontFamily: font.extraBold, fontSize: 10, letterSpacing: 2, color: GREEN },
+  clockCompleteTitle: { maxWidth: 340, marginTop: 10, fontFamily: font.extraBold, fontSize: 28, lineHeight: 34, letterSpacing: -.8, textAlign: "center", color: INK },
+  clockCompleteCall: { maxWidth: 340, marginTop: 12, fontFamily: font.semiBold, fontSize: 14, lineHeight: 20, textAlign: "center", color: MUTED },
+  clockCompleteDetails: { width: "100%", marginTop: 28, paddingHorizontal: 18, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: BORDER, backgroundColor: WHITE },
+  clockCompleteDetailRow: { minHeight: 54, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  clockCompleteDetailLabel: { fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2, color: DIM },
+  clockCompleteDetailValue: { fontFamily: font.extraBold, fontSize: 13, color: INK },
+  clockCompleteDivider: { height: 1, backgroundColor: BORDER },
+  clockCompleteMessage: { maxWidth: 330, marginTop: 18, fontFamily: font.medium, fontSize: 12, lineHeight: 18, textAlign: "center", color: MUTED },
+  clockCompletePrimary: { width: "100%", height: 58, marginTop: 28, borderRadius: 18, flexDirection: "row", gap: 9, alignItems: "center", justifyContent: "center", backgroundColor: BLUE, shadowColor: BLUE, shadowOpacity: .24, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 5 },
+  clockCompletePrimaryText: { fontFamily: font.extraBold, fontSize: 14, letterSpacing: 1.2, color: "#fff" },
+  clockCompleteSecondary: { minHeight: 48, marginTop: 8, paddingHorizontal: 24, alignItems: "center", justifyContent: "center" },
+  clockCompleteSecondaryText: { fontFamily: font.bold, fontSize: 11, letterSpacing: 1, color: BLUE },
   disabled: { opacity: 0.42 },
   earningsSummary: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", paddingVertical: 20 },
   earningsTotal: { fontFamily: font.extraBold, fontSize: 36, letterSpacing: -2, color: INK, marginTop: 4 }, pendingTotal: { fontFamily: font.extraBold, fontSize: 18, color: GOLD, marginTop: 3 },

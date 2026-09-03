@@ -33,6 +33,7 @@ export interface PortalActivity {
   attendanceStatus?: string;
   clockInAt?: string | null;
   clockOutAt?: string | null;
+  locationVerified?: boolean;
   lateMinutes?: number;
   earlyLeaveMinutes?: number;
   excuseStatus?: "None" | "Pending" | "Approved" | "Rejected" | string;
@@ -210,18 +211,28 @@ export async function getMemberPortal(): Promise<MemberPortalData> {
 export interface ClockInResult {
   success: true;
   alreadyClockedIn?: boolean;
-  attendance?: { id: string; clockInAt?: string | null };
+  attendance: {
+    id: string;
+    activityType: ActivityType;
+    activityId: string;
+    status: string;
+    clockInAt?: string | null;
+    clockOutAt?: string | null;
+    lateMinutes?: number;
+    earlyLeaveMinutes?: number;
+  };
 }
 
 export async function clockInActivity(type: ActivityType, sourceId: string, location: ClockLocationEvidence, excuseReason?: string): Promise<ClockInResult> {
-  if (isPreviewMode()) return { success: true };
+  if (isPreviewMode()) return { success: true, attendance: { id: "preview", activityType: type, activityId: sourceId, status: "Present", clockInAt: new Date().toISOString() } };
   const { data } = await client.post<ClockInResult>("/api/profile/member-portal/clock-in", { type, sourceId, location, excuseReason });
   return data;
 }
 
-export async function clockOutActivity(type: ActivityType, sourceId: string): Promise<void> {
-  if (isPreviewMode()) return;
-  await client.post("/api/profile/member-portal/clock-out", { type, sourceId });
+export async function clockOutActivity(type: ActivityType, sourceId: string): Promise<ClockInResult> {
+  if (isPreviewMode()) return { success: true, attendance: { id: "preview", activityType: type, activityId: sourceId, status: "Completed", clockOutAt: new Date().toISOString() } };
+  const { data } = await client.post<ClockInResult>("/api/profile/member-portal/clock-out", { type, sourceId });
+  return data;
 }
 
 export async function rsvpActivity(

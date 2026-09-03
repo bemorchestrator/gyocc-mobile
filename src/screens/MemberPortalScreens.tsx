@@ -65,6 +65,7 @@ import { useAuth } from "../context/AuthContext";
 import { font } from "../constants/fonts";
 import AttendanceMapModal from "../components/AttendanceMapModal";
 import { clockInFailureFeedback } from "../utils/clockInFeedback";
+import { refreshAttendanceData } from "../api/attendanceCache";
 import { getActivity, getFullyAttendedMembers, type FullyAttendedMember } from "../api/memberServices";
 
 const BG = "#F4F7F5";
@@ -1008,7 +1009,7 @@ function AttendanceContent({ portal, initialActivity, focusActivityKey, focusNon
   const clockInMutation = useMutation({
     mutationFn: ({ activity, location, excuseReason }: { activity: PortalActivity; location: ClockLocationEvidence; excuseReason?: string }) => clockInActivity(activity.type, activity.sourceId, location, excuseReason),
     onSuccess: (result, { activity }) => {
-      queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      void refreshAttendanceData(queryClient);
       const movedToPast = new Date(activity.endDate || activity.date) < new Date();
       Toast.show({
         type: "success",
@@ -1028,7 +1029,7 @@ function AttendanceContent({ portal, initialActivity, focusActivityKey, focusNon
   const clockOutMutation = useMutation({
     mutationFn: (activity: PortalActivity) => clockOutActivity(activity.type, activity.sourceId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["member-portal"] });
+      void refreshAttendanceData(queryClient);
       Toast.show({ type: "success", text1: "Clock-out recorded" });
       setSelected(null);
     },

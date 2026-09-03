@@ -19,7 +19,7 @@ import { getSessionValue } from "../utils/sessionStorage";
  * poll, so a missed event is self-healing.
  */
 
-type RealtimeResource = "member-portal" | "notifications" | "my-stipends";
+type RealtimeResource = "member-portal" | "member-attendance-overview" | "notifications" | "my-stipends";
 
 interface InvalidateEvent {
   type: "invalidate";
