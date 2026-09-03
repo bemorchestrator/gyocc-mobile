@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -48,16 +49,18 @@ interface FormData {
 }
 
 export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void } }) {
-  const { login } = useAuth();
+  const { login, loginWithApple, loginWithGoogle } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<"google" | "apple" | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: { email: "", password: "" },
   });
 
   async function onSubmit(data: FormData) {
+    if (socialLoading) return;
     setLoading(true);
     const email = data.email.trim().toLowerCase();
     try {
@@ -85,6 +88,30 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
       });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onSocialSignIn(provider: "google" | "apple") {
+    if (loading || socialLoading) return;
+    setSocialLoading(provider);
+    try {
+      if (provider === "google") {
+        await loginWithGoogle();
+      } else {
+        await loginWithApple();
+      }
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? "Could not complete sign-in.";
+      const cancelled = /cancel/i.test(message);
+      if (!cancelled) {
+        Toast.show({
+          type: "error",
+          text1: `${provider === "google" ? "Google" : "Apple"} sign-in failed`,
+          text2: message,
+        });
+      }
+    } finally {
+      setSocialLoading(null);
     }
   }
 
@@ -174,9 +201,40 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
+              <TouchableOpacity style={[styles.primaryBtn, (loading || socialLoading) && styles.disabledBtn]} disabled={loading || Boolean(socialLoading)} onPress={handleSubmit(onSubmit)}>
                 <Text style={styles.primaryBtnText}>{loading ? "Signing in…" : "Sign in"}</Text>
               </TouchableOpacity>
+
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or continue with</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
+                style={[styles.socialBtn, (loading || socialLoading) && styles.disabledBtn]}
+                disabled={loading || Boolean(socialLoading)}
+                onPress={() => onSocialSignIn("google")}
+              >
+                <Ionicons name="logo-google" size={20} color="#3F3230" />
+                <Text style={styles.socialBtnText}>
+                  {socialLoading === "google" ? "Connecting…" : "Continue with Google"}
+                </Text>
+              </TouchableOpacity>
+
+              {Platform.OS === "ios" ? (
+                <View style={(loading || socialLoading) && styles.disabledBtn} pointerEvents={loading || socialLoading ? "none" : "auto"}>
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                    cornerRadius={16}
+                    style={styles.appleBtn}
+                    onPress={() => onSocialSignIn("apple")}
+                  />
+                </View>
+              ) : null}
             </View>
 
             <Text style={styles.footer}>Need an account? Ask your conductor or section admin.</Text>
@@ -212,5 +270,12 @@ const styles = StyleSheet.create({
   link: { color: ON_PRIMARY, fontSize: 12, fontFamily: font.semiBold },
   primaryBtn: { height: 56, borderRadius: 16, backgroundColor: HEADER, alignItems: "center", justifyContent: "center", marginTop: 5, shadowColor: "#2E0008", shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
   primaryBtnText: { color: PRIMARY, fontSize: 14, fontFamily: font.bold },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 3 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: "rgba(244,245,240,.46)" },
+  dividerText: { color: ON_PRIMARY, opacity: 0.76, fontSize: 11, fontFamily: font.medium },
+  socialBtn: { height: 56, borderRadius: 16, backgroundColor: FIELD, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  socialBtnText: { color: FIELD_INK, fontSize: 14, fontFamily: font.semiBold },
+  appleBtn: { width: "100%", height: 56 },
+  disabledBtn: { opacity: 0.65 },
   footer: { color: ON_PRIMARY, opacity: 0.72, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 27 },
 });

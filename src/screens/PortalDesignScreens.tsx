@@ -45,6 +45,7 @@ import {
   getMemberPortal,
   MemberPortalData,
   PortalActivity,
+  type AttendanceRecord,
   ClockLocationEvidence,
   rsvpActivity,
 } from "../api/memberPortal";
@@ -251,6 +252,10 @@ export function PortalHomeScreen() {
         const next = calls[0];
         const firstName = (portal.user.name || portal.member.name || "Member").split(" ")[0];
         const avatar = portal.user.image || portal.member.avatarUrl;
+        const attendanceRecords = mergeHomeAttendanceRecords(
+          attendanceOverview.data?.records ?? [],
+          portal.attendance.history ?? [],
+        );
         return <>
           <View style={styles.homeControlRow}>
             <View style={styles.homeIntro}><Text style={styles.homeGreeting} numberOfLines={1}>{new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening"}, {firstName}</Text><Text style={styles.homeDate}>{format(new Date(), "EEEE, MMMM d").toUpperCase()}</Text></View>
@@ -304,7 +309,7 @@ export function PortalHomeScreen() {
           </LinearGradient> : <View style={styles.homeEmptyHero}><Ionicons name="checkmark-circle-outline" size={30} color={GREEN} /><View style={{ flex: 1 }}><Text style={styles.homeEmptyTitle}>Your schedule is clear.</Text><Text style={styles.homeEmptyBody}>New calls will appear here when they’re published.</Text></View></View>}
 
           <View style={styles.homeSectionHeader}><Text style={styles.homeOverviewTitle}>Attendance Overview</Text></View>
-          <HomeAttendanceOverview records={attendanceOverview.data?.records ?? []} loading={attendanceOverview.isLoading} />
+          <HomeAttendanceOverview records={attendanceRecords} loading={attendanceOverview.isLoading && attendanceRecords.length === 0} />
 
           <View style={styles.homeSectionHeader}><Text style={styles.homeOverviewTitle}>Member Overview</Text></View>
           <HomeMemberOverview portal={portal} calls={calls} navigation={navigation} />
@@ -346,8 +351,32 @@ function OverviewLegend({ color, label, value }: { color: string; label: string;
   return <View style={styles.homeLegendRow}><View style={[styles.homeLegendDot, { backgroundColor: color }]} /><Text style={styles.homeLegendLabel}>{label}</Text><Text style={styles.homeLegendValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text></View>;
 }
 
+function mergeHomeAttendanceRecords(canonical: AttendanceHistoryRecord[], portalHistory: AttendanceRecord[]) {
+  const merged = new Map<string, AttendanceHistoryRecord>();
+  const recordKey = (sourceType: string, scheduledStartAt: string) => {
+    const timestamp = new Date(scheduledStartAt).getTime();
+    return `${sourceType}:${Number.isNaN(timestamp) ? scheduledStartAt : timestamp}`;
+  };
+
+  for (const record of portalHistory) {
+    const normalized = {
+      _id: record.id,
+      sourceType: record.sourceType,
+      scheduledStartAt: record.date,
+      status: record.attendanceStatus ?? (record.attended ? "Present" : "Pending"),
+    };
+    merged.set(recordKey(normalized.sourceType, normalized.scheduledStartAt), normalized);
+  }
+  for (const record of canonical) {
+    merged.set(recordKey(record.sourceType, record.scheduledStartAt), record);
+  }
+
+  return Array.from(merged.values());
+}
+
 function HomeAttendanceOverview({ records, loading }: { records: AttendanceHistoryRecord[]; loading: boolean }) {
-  const days = Array.from({ length: 30 }, (_, index) => subDays(startOfDay(new Date()), 29 - index));
+  const today = startOfDay(new Date());
+  const days = Array.from({ length: 31 }, (_, index) => subDays(today, 30 - index));
   const byDay = new Map<string, { present: number; absent: number; total: number }>();
   for (const day of days) byDay.set(format(day, "yyyy-MM-dd"), { present: 0, absent: 0, total: 0 });
   for (const record of records) {
@@ -372,6 +401,7 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
   });
   const chartWidth = 320;
   const chartHeight = 118;
+  const chartInset = 4;
   const top = 8;
   const bottom = 106;
   const hasData = total > 0;
@@ -381,10 +411,13 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
   const plottedSeries = series;
   const max = Math.max(1, ...plottedSeries.flatMap((point) => [point.present, point.absent, point.total]));
   const chartPoints = (key: "present" | "absent" | "total") => plottedSeries.map((point, index) => {
-    const x = index * (chartWidth / (plottedSeries.length - 1));
+    const x = chartInset + index * ((chartWidth - chartInset * 2) / (plottedSeries.length - 1));
     const y = bottom - (point[key] / max) * (bottom - top);
     return { x, y };
   });
+  const totalEndpoint = chartPoints("total")[plottedSeries.length - 1];
+  const presentEndpoint = chartPoints("present")[plottedSeries.length - 1];
+  const absentEndpoint = chartPoints("absent")[plottedSeries.length - 1];
   const curvedPath = (key: "present" | "absent" | "total") => {
     const pathPoints = chartPoints(key);
     if (!pathPoints.length) return "";
@@ -403,7 +436,7 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
   return <View style={styles.homeAttendanceCard}>
     <View style={styles.homeAttendanceHeader}>
       <Text style={styles.homeAttendanceTitle}>Last 30 days</Text>
-      <Text style={styles.homeAttendanceRange}>{format(days[0], "MMM d")} — {format(days[29], "MMM d")}</Text>
+      <Text style={styles.homeAttendanceRange}>{format(days[0], "MMM d")} — Today</Text>
     </View>
     {loading ? <View style={styles.homeAttendanceLoading}><ActivityIndicator color={BLUE} /></View> : <>
       <View style={styles.homeAttendancePlot}>
@@ -412,9 +445,12 @@ function HomeAttendanceOverview({ records, loading }: { records: AttendanceHisto
           <Path d={curvedPath("total")} fill="none" stroke={INK} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
           <Path d={curvedPath("present")} fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
           <Path d={curvedPath("absent")} fill="none" stroke={BLUE} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" opacity={hasData ? 1 : 0} />
+          {total > 0 ? <Circle cx={totalEndpoint.x} cy={totalEndpoint.y} r="3.5" fill={INK} /> : null}
+          {present > 0 ? <Circle cx={presentEndpoint.x} cy={presentEndpoint.y} r="3.5" fill={GREEN} /> : null}
+          {absent > 0 ? <Circle cx={absentEndpoint.x} cy={absentEndpoint.y} r="3.5" fill={BLUE} /> : null}
         </Svg>
       </View>
-      <View style={styles.homeAttendanceAxis}><Text style={styles.homeAttendanceAxisText}>{format(days[0], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[14], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>{format(days[29], "MMM d")}</Text></View>
+      <View style={styles.homeAttendanceAxis}><Text style={styles.homeAttendanceAxisText}>30 days ago</Text><Text style={styles.homeAttendanceAxisText}>{format(days[15], "MMM d")}</Text><Text style={styles.homeAttendanceAxisText}>Today</Text></View>
       {!hasTrendData ? <View style={styles.homeAttendanceEmptyNote}><Ionicons name="analytics-outline" size={16} color={BLUE} /><Text style={styles.homeAttendanceEmptyText}>{hasData ? "Your trend will display here after a few more events are recorded." : "Your attendance data will display here after events are recorded."}</Text></View> : null}
       <View style={styles.homeAttendanceLegend}>
         <AttendanceLegend color={GREEN} label="Present" value={present} />
@@ -626,6 +662,7 @@ function ActivityDetailModal({
         <Text style={styles.sheetMeta}>{format(new Date(activity.date), "EEEE, MMMM d, yyyy")} · {callTime(activity)}</Text>
         <View style={styles.detailList}>
           <DetailItem icon="location-outline" label="VENUE" value={activity.venueName || "Venue to be announced"} />
+          <DetailItem icon="people-outline" label="DIVISION" value={activity.sectionType === "All" ? "All divisions" : activity.sectionType || "All divisions"} />
           <DetailItem icon="musical-notes-outline" label="YOUR PART" value={activity.role || "Member"} />
           <DetailItem icon="cash-outline" label="PAYOUT" value={activity.payoutAmount ? money(activity.payoutAmount) : "None"} />
           <DetailItem icon="checkmark-circle-outline" label="ATTENDANCE" value={attendanceLabel(activity)} />

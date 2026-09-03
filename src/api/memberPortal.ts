@@ -26,6 +26,7 @@ export interface PortalActivity {
   locationRequired?: boolean;
   locationConfigured?: boolean;
   status: string;
+  sectionType?: "Choir" | "Orchestra" | "Rondalla" | "All";
   role: string;
   confirmation: string;
   isAssigned?: boolean;
@@ -87,7 +88,7 @@ export interface MemberPortalData {
     email?: string;
     phone?: string;
     avatarUrl?: string;
-    section: "Choir" | "Orchestra" | "Rondalla" | "Both" | string;
+    section: "Choir" | "Orchestra" | "Rondalla" | "All" | string;
     rank: "Conductor" | "Senior" | "Junior" | "Apprentice";
     level: 1 | 2 | null;
     voicePart?: string;

@@ -1,7 +1,7 @@
 import client, { COOKIE_KEY } from "./client";
 import { User } from "../types";
 import { deleteSessionValue, getSessionValue, setSessionValue } from "../utils/sessionStorage";
-import { signInWithGoogleSocial } from "./betterAuthClient";
+import { signInWithAppleSocial, signInWithGoogleSocial } from "./betterAuthClient";
 
 function tokenFrom(data: unknown): string | null {
   const record = (data ?? {}) as { token?: unknown; session?: { token?: unknown } };
@@ -141,6 +141,26 @@ export async function signInWithGoogle(): Promise<{ user: User }> {
   });
   if (!session?.user) {
     throw new Error("Google sign-in completed, but no session was returned.");
+  }
+
+  return session;
+}
+
+export async function signInWithApple(): Promise<{ user: User }> {
+  await deleteSessionValue(COOKIE_KEY);
+  const response = await signInWithAppleSocial();
+  await ensureSessionStored(response);
+
+  let session = await getSession();
+  if (!session?.user) {
+    throw new Error("Apple sign-in completed, but no session was returned.");
+  }
+
+  // Apple only shares the person's name on their first authorization. Save it
+  // immediately if Better Auth created the account from a token without one.
+  if (!session.user.name?.trim() && response.appleName) {
+    await client.post("/api/auth/update-user", { name: response.appleName });
+    session = (await getSession()) ?? session;
   }
 
   return session;

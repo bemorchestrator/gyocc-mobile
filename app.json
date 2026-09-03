@@ -10,6 +10,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "org.gyocc.official",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -45,6 +46,7 @@
         }
       ],
       "expo-web-browser",
+      "expo-apple-authentication",
       "expo-sharing",
       [
         "expo-location",

@@ -495,8 +495,8 @@ const PART_OPTIONS: Record<string, string[]> = {
 
 function partOptionsForSection(section: string): string[] {
   if (PART_OPTIONS[section]) return PART_OPTIONS[section];
-  // "Both" or unknown section — offer voice parts plus common instruments.
-  return [...PART_OPTIONS.Choir, ...PART_OPTIONS.Orchestra];
+  // "All" or unknown section — offer parts and instruments from every division.
+  return [...PART_OPTIONS.Choir, ...PART_OPTIONS.Orchestra, ...PART_OPTIONS.Rondalla];
 }
 
 function partFieldLabel(section: string): string {
@@ -1397,6 +1397,7 @@ function ActivityDetail({
       </View>
       <View style={styles.detailFlat}>
         <DetailLine icon="time-outline" label="Time" value={`${format(new Date(item.date), "h:mm a")} - ${item.endDate ? format(new Date(item.endDate), "h:mm a") : "TBA"}`} />
+        <DetailLine icon="people-outline" label="Division" value={item.sectionType === "All" ? "All divisions" : item.sectionType || "All divisions"} />
         <DetailLine icon="location-outline" label="Location" value={item.venueName || "Venue TBA"} />
         <DetailLine icon="musical-notes-outline" label="Role" value={item.role || activityKind(item.type)} />
         <DetailLine icon="checkmark-circle-outline" label="Response" value={needsRsvp ? `Tap I'm in to join this ${activityKind(item.type).toLowerCase()}` : joined ? "Joined" : item.confirmation} />
