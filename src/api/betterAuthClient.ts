@@ -1,5 +1,4 @@
 import Constants from "expo-constants";
-import * as AppleAuthentication from "expo-apple-authentication";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { Platform } from "react-native";
@@ -11,10 +10,8 @@ const OAUTH_CALLBACK_URL = resolveOAuthCallbackUrl();
 const AUTH_ORIGIN = resolveAuthOrigin(OAUTH_CALLBACK_URL);
 
 type SocialSignInResponse = {
-  token?: string;
   url?: string;
   redirect?: boolean;
-  appleName?: string;
   error?: {
     message?: string;
     code?: string;
@@ -47,71 +44,6 @@ export async function signInWithGoogleSocial() {
   console.log("[Google Auth] Session cookie persist complete");
 
   return response;
-}
-
-export async function isAppleSignInAvailable(): Promise<boolean> {
-  return Platform.OS === "ios" && AppleAuthentication.isAvailableAsync();
-}
-
-/**
- * Use the system Apple sheet, then let Better Auth validate Apple's signed ID
- * token and create the same session used by email and Google sign-in.
- */
-export async function signInWithAppleSocial(): Promise<SocialSignInResponse> {
-  if (!(await isAppleSignInAvailable())) {
-    throw new Error("Sign in with Apple is not available on this device.");
-  }
-
-  let credential: AppleAuthentication.AppleAuthenticationCredential;
-  try {
-    credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
-    });
-  } catch (error) {
-    if ((error as { code?: string })?.code === "ERR_REQUEST_CANCELED") {
-      throw new Error("Apple sign-in was cancelled.");
-    }
-    throw error;
-  }
-
-  if (!credential.identityToken) {
-    throw new Error("Apple sign-in completed, but no identity token was returned.");
-  }
-
-  const appleName = credential.fullName
-    ? AppleAuthentication.formatFullName(credential.fullName).trim()
-    : "";
-
-  const result = await fetch(`${AUTH_BASE_URL}/api/auth/sign-in/social`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "expo-origin": AUTH_ORIGIN,
-      "X-GYOCC-Client": "mobile",
-      Cookie: (await getSessionValue(COOKIE_KEY)) ?? "",
-    },
-    body: JSON.stringify({
-      provider: "apple",
-      callbackURL: OAUTH_CALLBACK_URL,
-      idToken: { token: credential.identityToken },
-    }),
-  });
-
-  const data = (await result.json().catch(() => ({}))) as SocialSignInResponse;
-  if (!result.ok || data.error) {
-    throw new Error(data.error?.message || `Apple sign-in failed (${result.status}).`);
-  }
-
-  const cookieHeader = result.headers.get("x-gyocc-set-cookie");
-  const sessionCookie = cookieHeader ? extractSessionCookie(cookieHeader) : null;
-  if (sessionCookie) {
-    await setSessionValue(COOKIE_KEY, sessionCookie);
-  }
-
-  return { ...data, appleName: appleName || undefined };
 }
 
 async function requestGoogleAuthorizationUrl(): Promise<SocialSignInResponse> {

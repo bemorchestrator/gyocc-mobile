@@ -12,7 +12,6 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as AppleAuthentication from "expo-apple-authentication";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -49,11 +48,11 @@ interface FormData {
 }
 
 export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void } }) {
-  const { login, loginWithApple, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState<"google" | "apple" | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: { email: "", password: "" },
@@ -91,27 +90,23 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
     }
   }
 
-  async function onSocialSignIn(provider: "google" | "apple") {
+  async function onGoogleSignIn() {
     if (loading || socialLoading) return;
-    setSocialLoading(provider);
+    setSocialLoading(true);
     try {
-      if (provider === "google") {
-        await loginWithGoogle();
-      } else {
-        await loginWithApple();
-      }
+      await loginWithGoogle();
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message ?? "Could not complete sign-in.";
       const cancelled = /cancel/i.test(message);
       if (!cancelled) {
         Toast.show({
           type: "error",
-          text1: `${provider === "google" ? "Google" : "Apple"} sign-in failed`,
+          text1: "Google sign-in failed",
           text2: message,
         });
       }
     } finally {
-      setSocialLoading(null);
+      setSocialLoading(false);
     }
   }
 
@@ -216,25 +211,13 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
                 accessibilityLabel="Continue with Google"
                 style={[styles.socialBtn, (loading || socialLoading) && styles.disabledBtn]}
                 disabled={loading || Boolean(socialLoading)}
-                onPress={() => onSocialSignIn("google")}
+                onPress={onGoogleSignIn}
               >
                 <Ionicons name="logo-google" size={20} color="#3F3230" />
                 <Text style={styles.socialBtnText}>
-                  {socialLoading === "google" ? "Connecting…" : "Continue with Google"}
+                  {socialLoading ? "Connecting…" : "Continue with Google"}
                 </Text>
               </TouchableOpacity>
-
-              {Platform.OS === "ios" ? (
-                <View style={(loading || socialLoading) && styles.disabledBtn} pointerEvents={loading || socialLoading ? "none" : "auto"}>
-                  <AppleAuthentication.AppleAuthenticationButton
-                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
-                    cornerRadius={16}
-                    style={styles.appleBtn}
-                    onPress={() => onSocialSignIn("apple")}
-                  />
-                </View>
-              ) : null}
             </View>
 
             <Text style={styles.footer}>Need an account? Ask your conductor or section admin.</Text>
@@ -275,7 +258,6 @@ const styles = StyleSheet.create({
   dividerText: { color: ON_PRIMARY, opacity: 0.76, fontSize: 11, fontFamily: font.medium },
   socialBtn: { height: 56, borderRadius: 16, backgroundColor: FIELD, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   socialBtnText: { color: FIELD_INK, fontSize: 14, fontFamily: font.semiBold },
-  appleBtn: { width: "100%", height: 56 },
   disabledBtn: { opacity: 0.65 },
   footer: { color: ON_PRIMARY, opacity: 0.72, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 27 },
 });

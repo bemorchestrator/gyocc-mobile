@@ -3,7 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getSession,
   signIn,
-  signInWithApple,
   signInWithGoogle,
   signOut,
   signUp,
@@ -24,7 +23,6 @@ interface AuthState {
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendCode: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
-  loginWithApple: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -37,7 +35,6 @@ const AuthContext = createContext<AuthState>({
   verifyEmail: async () => {},
   resendCode: async () => {},
   loginWithGoogle: async () => {},
-  loginWithApple: async () => {},
   logout: async () => {},
 });
 
@@ -109,11 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await adoptSession(result.user);
   }
 
-  async function loginWithApple() {
-    const result = await signInWithApple();
-    await adoptSession(result.user);
-  }
-
   async function logout() {
     try {
       // This must happen before signOut deletes the session cookie; the API
@@ -148,7 +140,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verifyEmail,
         resendCode,
         loginWithGoogle,
-        loginWithApple,
         logout,
       }}
     >
