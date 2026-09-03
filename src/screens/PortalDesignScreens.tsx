@@ -270,6 +270,16 @@ export function PortalHomeScreen() {
             </View>
           </View>
 
+          {portal.member.section === "Unassigned" ? (
+            <View style={styles.homeEmptyHero}>
+              <Ionicons name="people-outline" size={30} color={GOLD} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.homeEmptyTitle}>Your member portal is ready.</Text>
+                <Text style={styles.homeEmptyBody}>Your conductor still needs to assign your division. Until then, you’ll only see calls open to everyone.</Text>
+              </View>
+            </View>
+          ) : null}
+
           {next ? <LinearGradient colors={["#A30020", "#840016", "#4A000D"]} locations={[0, 0.52, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.homeHero}>
             <View style={styles.homeHeroTop}>
               <View style={styles.homeHeroTag}><View style={styles.liveDot} /><Text style={styles.homeHeroTagText}>NEXT CALL · {next.type.toUpperCase()}</Text></View>

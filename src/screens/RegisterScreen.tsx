@@ -97,7 +97,7 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
 
           <View style={styles.panel}>
             <Text style={styles.title}>Create account</Text>
-            <Text style={styles.subtitle}>Set up your sign-in. Your conductor assigns your section and access.</Text>
+            <Text style={styles.subtitle}>Your portal opens after sign-in. Your conductor can then assign your division and rank.</Text>
 
             <View style={styles.form}>
               <Controller
