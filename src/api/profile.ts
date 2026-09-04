@@ -35,6 +35,12 @@ export interface AvatarUploadAsset {
 }
 
 export async function uploadProfileAvatar(asset: AvatarUploadAsset): Promise<{ avatarUrl: string }> {
+  // The regular API client and expo-file-system use separate native networking
+  // sessions. Refresh through the regular client first so the backend can
+  // mirror the session it actually accepted back into SecureStore before the
+  // upload task reads it.
+  await client.get("/api/profile", { skipErrorLog: true } as never);
+
   // Photo-library assets can be HEIC/AVIF or several megabytes even after the
   // system crop UI. Normalize them here so every profile screen uploads the
   // same small, server-supported payload instead of relying on picker metadata.
