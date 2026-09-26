@@ -84,10 +84,6 @@ async function completeNativeOAuth(authorizationUrl?: string | null) {
     hasAuthorizationUrl: true,
   });
 
-  if (Platform.OS === "android") {
-    WebBrowser.dismissAuthSession();
-  }
-
   const result = await WebBrowser.openAuthSessionAsync(proxyUrl, OAUTH_CALLBACK_URL);
   console.log("[Google Auth] Native auth session result", { type: result.type });
 
