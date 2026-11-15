@@ -20,7 +20,6 @@ import { Controller, useForm } from "react-hook-form";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/AuthContext";
 import { font } from "../constants/fonts";
-import { openPrivacyPolicy } from "../constants/links";
 import { isAppleSignInAvailable } from "../api/auth";
 
 const BG = "#840016";
@@ -261,9 +260,14 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
             </View>
 
             <Text style={styles.footer}>Need an account? Ask your conductor or section admin.</Text>
-            <TouchableOpacity accessibilityRole="link" onPress={openPrivacyPolicy} style={styles.legalLink}>
-              <Text style={styles.legalText}>Privacy Policy</Text>
-            </TouchableOpacity>
+            <View style={styles.legalRow}>
+              <TouchableOpacity accessibilityRole="link" onPress={() => navigation.navigate("Legal", { doc: "terms" })} style={styles.legalLink}>
+                <Text style={styles.legalText}>Terms of Use</Text>
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityRole="link" onPress={() => navigation.navigate("Legal", { doc: "privacy" })} style={styles.legalLink}>
+                <Text style={styles.legalText}>Privacy Policy</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -303,6 +307,7 @@ const styles = StyleSheet.create({
   socialBtnText: { color: FIELD_INK, fontSize: 14, fontFamily: font.semiBold },
   disabledBtn: { opacity: 0.65 },
   appleBtn: { height: 56, width: "100%" },
+  legalRow: { flexDirection: "row", justifyContent: "center", gap: 4 },
   legalLink: { alignSelf: "center", marginTop: 12, paddingVertical: 6, paddingHorizontal: 10 },
   legalText: { color: ON_PRIMARY, opacity: 0.85, fontSize: 11, fontFamily: font.semiBold, textDecorationLine: "underline" },
   footer: { color: ON_PRIMARY, opacity: 0.72, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 27 },

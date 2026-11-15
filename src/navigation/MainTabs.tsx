@@ -12,6 +12,7 @@ import AccountScreen from "../screens/member/AccountScreen";
 import MenuScreen from "../screens/member/MenuScreen";
 import DeleteAccountScreen from "../screens/member/DeleteAccountScreen";
 import { InboxScreen } from "../screens/PortalDesignScreens";
+import LegalDocumentScreen from "../screens/LegalDocumentScreen";
 
 // Member app (design/mockups/board-*.png): no tab bar. Home is the analytics
 // overview (board-3); its calendar icon opens the "This Week" list, the ring opens
@@ -39,6 +40,7 @@ export default function MainTabs() {
       <Stack.Screen name="Attendance" component={AttendanceScreen} />
       <Stack.Screen name="Profile" component={AccountScreen} />
       <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+      <Stack.Screen name="Legal" component={LegalDocumentScreen} />
       <Stack.Screen name="Inbox" component={InboxScreen} />
       <Stack.Screen name="Menu" component={MenuScreen} options={{ animation: "fade", presentation: "fullScreenModal" }} />
     </Stack.Navigator>

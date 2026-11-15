@@ -20,7 +20,6 @@ import { useAuth } from "../context/AuthContext";
 import WelcomeBackdrop from "../components/WelcomeBackdrop";
 import { checkPasswordStrength, PASSWORD_MIN_LENGTH, PASSWORD_RULES_TEXT } from "../utils/passwordRules";
 import { font } from "../constants/fonts";
-import { openPrivacyPolicy } from "../constants/links";
 
 const BG = "#840016";
 const HEADER = "#F1F0EC";
@@ -206,8 +205,10 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
                 <Text style={styles.primaryBtnText}>{loading ? "Creating account…" : "Create account"}</Text>
               </TouchableOpacity>
               <Text style={styles.consent}>
-                By creating an account you agree to how GYOCC uses your details, as explained in our{" "}
-                <Text style={styles.consentLink} onPress={openPrivacyPolicy} accessibilityRole="link">Privacy Policy</Text>.
+                By creating an account you agree to our{" "}
+                <Text style={styles.consentLink} onPress={() => navigation.navigate("Legal", { doc: "terms" })} accessibilityRole="link">Terms of Use</Text>
+                {" "}and to how GYOCC uses your details, as explained in our{" "}
+                <Text style={styles.consentLink} onPress={() => navigation.navigate("Legal", { doc: "privacy" })} accessibilityRole="link">Privacy Policy</Text>.
               </Text>
             </View>
 

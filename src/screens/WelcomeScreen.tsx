@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import WelcomeBackdrop from "../components/WelcomeBackdrop";
 import { font } from "../constants/fonts";
-import { openPrivacyPolicy } from "../constants/links";
 
 const BG = "#840016";
 const HEADER = "#F1F0EC";
@@ -13,7 +12,7 @@ const PRIMARY = "#840016";
 const ON_PRIMARY = "#F4F5F0";
 
 
-export default function WelcomeScreen({ navigation }: { navigation: { navigate: (screen: string) => void } }) {
+export default function WelcomeScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void } }) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -39,9 +38,14 @@ export default function WelcomeScreen({ navigation }: { navigation: { navigate: 
           </TouchableOpacity>
 
           <Text style={styles.footer}>New accounts are reviewed by your conductor or section admin.</Text>
-          <TouchableOpacity accessibilityRole="link" onPress={openPrivacyPolicy} style={styles.legalLink}>
-            <Text style={styles.legalText}>Privacy Policy</Text>
-          </TouchableOpacity>
+          <View style={styles.legalRow}>
+            <TouchableOpacity accessibilityRole="link" onPress={() => navigation.navigate("Legal", { doc: "terms" })} style={styles.legalLink}>
+              <Text style={styles.legalText}>Terms of Use</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="link" onPress={() => navigation.navigate("Legal", { doc: "privacy" })} style={styles.legalLink}>
+              <Text style={styles.legalText}>Privacy Policy</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </View>
@@ -59,6 +63,7 @@ const styles = StyleSheet.create({
   primaryBtnText: { color: PRIMARY, fontSize: 14, fontFamily: font.bold },
   secondaryBtn: { height: 56, borderRadius: 16, borderWidth: 1.5, borderColor: "rgba(244,245,240,.55)", alignItems: "center", justifyContent: "center", marginTop: 12 },
   secondaryBtnText: { color: ON_PRIMARY, fontSize: 14, fontFamily: font.bold },
+  legalRow: { flexDirection: "row", justifyContent: "center", gap: 4 },
   legalLink: { alignSelf: "center", marginTop: 8, paddingVertical: 6, paddingHorizontal: 10 },
   legalText: { color: ON_PRIMARY, opacity: 0.85, fontSize: 11, fontFamily: font.semiBold, textDecorationLine: "underline" },
   footer: { color: ON_PRIMARY, opacity: 0.66, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 22 },

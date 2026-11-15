@@ -8,7 +8,7 @@ import Toast from "react-native-toast-message";
 import { updateProfile } from "../../api/profile";
 import { DEFAULT_MEMBER_SETTINGS, getPreferences, MemberSettingsPreferences, updatePreferencesRemote } from "../../api/preferences";
 import { forgotPassword } from "../../api/auth";
-import { emailSupport, openPrivacyPolicy, SUPPORT_EMAIL } from "../../constants/links";
+import { emailSupport, SUPPORT_EMAIL } from "../../constants/links";
 import { C, ClockFab, F, GUTTER, Headline, TopBar, usePortal } from "./kit";
 
 type Editing = { key: "phone" | "voicePart"; label: string; value: string } | null;
@@ -66,7 +66,8 @@ export default function AccountScreen() {
         {!query.isLoading ? (
           <View style={{ marginTop: portal ? 0 : 22 }}>
             <Row label="Help" value={SUPPORT_EMAIL} onPress={() => emailSupport()} />
-            <Row label="Privacy policy" value="gyocc.org/privacy" onPress={() => openPrivacyPolicy()} />
+            <Row label="Privacy policy" value="How GYOCC uses your data" onPress={() => navigation.navigate("Legal", { doc: "privacy" })} />
+            <Row label="Terms of use" value="Rules for using the app" onPress={() => navigation.navigate("Legal", { doc: "terms" })} />
             <Row label="Delete account" value="Remove your login and personal details" onPress={() => navigation.navigate("DeleteAccount")} danger />
           </View>
         ) : null}
