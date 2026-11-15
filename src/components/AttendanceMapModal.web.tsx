@@ -43,10 +43,6 @@ export default function AttendanceMapModal({
     setSubmissionError(undefined);
     setClockMs(Date.now());
     setLocationMessage("Finding your location…");
-    if (action === "out") {
-      setLocationMessage("Review the venue, then confirm that you are finishing this activity.");
-      return;
-    }
     if (!navigator.geolocation) {
       setLocationMessage("Location services are not available in this browser.");
       return;
@@ -64,8 +60,8 @@ export default function AttendanceMapModal({
         else {
           const distance = distanceMeters(next, venue);
           setLocationMessage(distance + next.accuracyMeters <= geofenceRadiusMeters && next.accuracyMeters <= 50
-            ? `Inside clock-in area (${Math.round(distance)} m away).`
-            : `Outside the verified clock-in area or GPS accuracy is too low.`);
+            ? `Inside the venue area (${Math.round(distance)} m away).`
+            : `Outside the venue area or GPS accuracy is too low.`);
         }
       },
       () => setLocationMessage("Location permission and an accurate GPS fix are required."),
@@ -75,7 +71,7 @@ export default function AttendanceMapModal({
   }, [visible, action, venueLatitude, venueLongitude, geofenceRadiusMeters, refreshNonce]);
 
   useEffect(() => {
-    if (!visible || action !== "in") return;
+    if (!visible) return;
     const timer = setInterval(() => setClockMs(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [action, visible]);
@@ -100,12 +96,12 @@ export default function AttendanceMapModal({
   const locationAgeMs = location ? clockMs - new Date(location.capturedAt).getTime() : Number.POSITIVE_INFINITY;
   const locationExpired = Boolean(location && (locationAgeMs > 60_000 || locationAgeMs < -10_000));
   const accepted = Boolean(location && venue && !locationExpired && location.accuracyMeters <= 50 && distanceMeters(location, venue) + location.accuracyMeters <= geofenceRadiusMeters);
-  const confirmDisabled = busy || (action === "in" && !accepted);
+  const confirmDisabled = busy || !accepted;
   const displayedLocationMessage = submissionError
-    ?? (locationExpired ? "Your GPS position expired. Refresh it before clocking in." : locationMessage);
+    ?? (locationExpired ? "Your GPS position expired. Refresh it and try again." : locationMessage);
 
   useEffect(() => {
-    if (visible && action === "in" && locationExpired) setRefreshNonce((value) => value + 1);
+    if (visible && locationExpired) setRefreshNonce((value) => value + 1);
   }, [action, locationExpired, visible]);
 
   return (
@@ -124,12 +120,10 @@ export default function AttendanceMapModal({
           <Text style={styles.venue}>{venueName || "Activity venue"}</Text>
           <Text style={styles.address}>{venueAddress || "No venue address was provided."}</Text>
           <Text style={styles.location}>{displayedLocationMessage}</Text>
-          {action === "in" ? (
-            <TouchableOpacity style={styles.refresh} disabled={busy} onPress={() => { setSubmissionError(undefined); setRefreshNonce((value) => value + 1); }}>
-              <Ionicons name="refresh" size={16} color="#0D9488" />
-              <Text style={styles.refreshText}>Refresh GPS</Text>
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity style={styles.refresh} disabled={busy} onPress={() => { setSubmissionError(undefined); setRefreshNonce((value) => value + 1); }}>
+            <Ionicons name="refresh" size={16} color="#0D9488" />
+            <Text style={styles.refreshText}>Refresh GPS</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.confirm, confirmDisabled && { opacity: 0.65 }]} onPress={() => void confirm()} disabled={confirmDisabled}>
             {busy ? <ActivityIndicator color="#FFFFFF" /> : null}
             <Text style={styles.confirmText}>{busy ? `${actionLabel}…` : `Confirm ${actionLabel.toLowerCase()}`}</Text>

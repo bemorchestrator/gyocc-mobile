@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   getSession,
   signIn,
+  signInWithApple,
   signInWithGoogle,
   signOut,
   signUp,
@@ -10,7 +11,9 @@ import {
   sendVerificationCode,
 } from "../api/auth";
 import type { SignUpOutcome } from "../api/auth";
+import { COOKIE_KEY } from "../api/config";
 import { User } from "../types";
+import { deleteSessionValue } from "../utils/sessionStorage";
 import Toast from "react-native-toast-message";
 import { unregisterCurrentDevicePushToken } from "../utils/pushNotifications";
 
@@ -23,6 +26,9 @@ interface AuthState {
   verifyEmail: (email: string, code: string) => Promise<void>;
   resendCode: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
+  loginWithApple: () => Promise<void>;
+  /** The server already deleted the account; forget it on this device. */
+  forgetDeletedAccount: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -35,6 +41,8 @@ const AuthContext = createContext<AuthState>({
   verifyEmail: async () => {},
   resendCode: async () => {},
   loginWithGoogle: async () => {},
+  loginWithApple: async () => {},
+  forgetDeletedAccount: async () => {},
   logout: async () => {},
 });
 
@@ -106,6 +114,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await adoptSession(result.user);
   }
 
+  async function loginWithApple() {
+    const result = await signInWithApple();
+    await adoptSession(result.user);
+  }
+
+  async function forgetDeletedAccount() {
+    // The account, its sessions and its push tokens are already gone on the
+    // server, so there is nothing to sign out of — just drop local state.
+    await deleteSessionValue(COOKIE_KEY);
+    await adoptSession(null);
+  }
+
   async function logout() {
     try {
       // This must happen before signOut deletes the session cookie; the API
@@ -140,6 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         verifyEmail,
         resendCode,
         loginWithGoogle,
+        loginWithApple,
+        forgetDeletedAccount,
         logout,
       }}
     >

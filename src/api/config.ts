@@ -19,30 +19,31 @@ function getDevelopmentApiUrl() {
   return "http://localhost:5001";
 }
 
+const PRODUCTION_API_URL = "https://api.gyocc.org";
+
+// Standalone (Release) builds always talk to production. EXPO_PUBLIC_* values
+// from mobile/.env are inlined into every bundle, so honoring them outside
+// __DEV__ would bake a LAN address into a phone install and split sign-in
+// (production) from data (an unreachable local backend).
 export function getBaseUrl() {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  if (configuredUrl) {
-    return normalizeUrl(configuredUrl);
+  if (!__DEV__) {
+    return PRODUCTION_API_URL;
   }
 
-  if (__DEV__) {
-    return getDevelopmentApiUrl();
-  }
-
-  return "https://api.gyocc.org";
+  return getDevelopmentApiUrl();
 }
 
 export function getAuthBaseUrl() {
+  if (!__DEV__) {
+    return PRODUCTION_API_URL;
+  }
+
   const configuredAuthUrl = process.env.EXPO_PUBLIC_AUTH_API_URL?.trim();
   if (configuredAuthUrl) {
     return normalizeUrl(configuredAuthUrl);
   }
 
-  if (__DEV__) {
-    return "https://api.gyocc.org";
-  }
-
-  return getBaseUrl();
+  return PRODUCTION_API_URL;
 }
 
 export const BASE_URL = getBaseUrl();

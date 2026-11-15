@@ -10,16 +10,49 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "appleTeamId": "CF2R28L757",
       "bundleIdentifier": "org.gyocc.official",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "Allow GYOCC to use your location when confirming clock-in and clock-out.",
-        "NSLocalNetworkUsageDescription": "Allow GYOCC to connect to the local development server on this network."
+        "NSLocationWhenInUseUsageDescription": "GYOCC checks your location only when you tap Clock in or Clock out, to confirm you are at the rehearsal or gig venue."
       },
       "entitlements": {
         "aps-environment": "production"
       },
-      "buildNumber": "14"
+      "buildNumber": "14",
+      "usesAppleSignIn": true,
+      "privacyManifests": {
+        "NSPrivacyTracking": false,
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1",
+              "0A2A.1",
+              "3B52.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "E174.1",
+              "85F4.1"
+            ]
+          }
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -28,28 +61,56 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.gyocc.official",
-      "versionCode": 9
+      "versionCode": 9,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       "expo-font",
       "expo-notifications",
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow GYOCC to access your photos to upload images.",
-          "cameraPermission": "Allow GYOCC to access your camera."
+          "photosPermission": "GYOCC opens your photo library only when you choose a new profile photo.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       "expo-web-browser",
+      "expo-apple-authentication",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false,
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
       "expo-sharing",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow GYOCC to use your location to verify that you are at the venue when clocking in."
+          "locationWhenInUsePermission": "GYOCC checks your location only when you tap Clock in or Clock out, to confirm you are at the rehearsal or gig venue.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
         }
       ],
       "@react-native-community/datetimepicker",
@@ -60,7 +121,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF"
         }
-      ]
+      ],
+      "./plugins/withSceneDelegate"
     ],
     "extra": {
       "googleClientId": "775508410511-c3dj56ui64q5jump3ivfm1e9dd9l5gdo.apps.googleusercontent.com",

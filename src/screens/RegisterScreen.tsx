@@ -20,6 +20,7 @@ import { useAuth } from "../context/AuthContext";
 import WelcomeBackdrop from "../components/WelcomeBackdrop";
 import { checkPasswordStrength, PASSWORD_MIN_LENGTH, PASSWORD_RULES_TEXT } from "../utils/passwordRules";
 import { font } from "../constants/fonts";
+import { openPrivacyPolicy } from "../constants/links";
 
 const BG = "#840016";
 const HEADER = "#F1F0EC";
@@ -204,6 +205,10 @@ export default function RegisterScreen({ navigation }: { navigation: { navigate:
               <TouchableOpacity style={[styles.primaryBtn, loading && { opacity: 0.65 }]} disabled={loading} onPress={handleSubmit(onSubmit)}>
                 <Text style={styles.primaryBtnText}>{loading ? "Creating account…" : "Create account"}</Text>
               </TouchableOpacity>
+              <Text style={styles.consent}>
+                By creating an account you agree to how GYOCC uses your details, as explained in our{" "}
+                <Text style={styles.consentLink} onPress={openPrivacyPolicy} accessibilityRole="link">Privacy Policy</Text>.
+              </Text>
             </View>
 
             <TouchableOpacity style={styles.footerLink} onPress={() => navigation.navigate("Login")}>
@@ -240,5 +245,7 @@ const styles = StyleSheet.create({
   primaryBtn: { height: 56, borderRadius: 16, backgroundColor: HEADER, alignItems: "center", justifyContent: "center", marginTop: 5, shadowColor: "#2E0008", shadowOpacity: 0.32, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 },
   primaryBtnText: { color: PRIMARY, fontSize: 14, fontFamily: font.bold },
   footerLink: { marginTop: 24, alignSelf: "center" },
+  consent: { color: ON_PRIMARY, opacity: 0.78, fontSize: 11, lineHeight: 16, fontFamily: font.regular, textAlign: "center", marginTop: 2 },
+  consentLink: { fontFamily: font.semiBold, textDecorationLine: "underline" },
   footer: { color: ON_PRIMARY, opacity: 0.78, fontSize: 12, lineHeight: 17, fontFamily: font.semiBold, textAlign: "center" },
 });

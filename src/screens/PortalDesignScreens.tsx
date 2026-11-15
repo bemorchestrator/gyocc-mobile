@@ -283,7 +283,6 @@ export function PortalHomeScreen() {
           {next ? <LinearGradient colors={["#A30020", "#840016", "#4A000D"]} locations={[0, 0.52, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.homeHero}>
             <View style={styles.homeHeroTop}>
               <View style={styles.homeHeroTag}><View style={styles.liveDot} /><Text style={styles.homeHeroTagText}>NEXT CALL · {next.type.toUpperCase()}</Text></View>
-              {next.payoutAmount > 0 ? <View style={styles.homeHeroPayoutWrap}><Text style={styles.homeHeroPayoutLabel}>YOUR PAYOUT</Text><Text style={styles.homeHeroPayout}>{money(next.payoutAmount)}</Text></View> : null}
             </View>
             <TouchableOpacity style={styles.homeHeroMain} activeOpacity={0.78} onPress={() => navigation.navigate("Schedule", { sourceType: next.type, sourceId: next.sourceId, focusNonce: Date.now() })}>
               <View style={styles.homeDateTile}><Text style={styles.homeDateMonth}>{format(new Date(next.date), "MMM").toUpperCase()}</Text><Text style={styles.homeDateNumber}>{format(new Date(next.date), "dd")}</Text></View>
@@ -339,8 +338,8 @@ function HomeMemberOverview({ portal, calls, navigation }: { portal: MemberPorta
   const attendance = Math.max(0, Math.min(100, portal.attendance.attendanceRate || 0));
   const radius = 22;
   const circumference = 2 * Math.PI * radius;
-  const earned = Math.max(0, portal.earnings.total || 0);
-  const pending = Math.max(0, portal.earnings.pending || 0);
+  const attended = Math.max(0, portal.attendance.overallAttended || 0);
+  const late = Math.max(0, portal.attendance.reliability?.lateCount ?? 0);
   return <TouchableOpacity style={styles.homeOverviewCard} activeOpacity={0.76} onPress={() => navigation.navigate("Profile")}>
     <View style={styles.homeOverviewDonut}>
       <Svg width={112} height={112} viewBox="0 0 56 56">
@@ -350,8 +349,8 @@ function HomeMemberOverview({ portal, calls, navigation }: { portal: MemberPorta
       <View style={styles.homeOverviewDonutText}><Text style={styles.homeOverviewPercent}>{attendance}%</Text><Text style={styles.homeOverviewCaption}>ATTENDANCE</Text></View>
     </View>
     <View style={styles.homeOverviewLegend}>
-      <OverviewLegend color={BLUE} label="Earned" value={money(earned)} />
-      <OverviewLegend color={GOLD} label="Pending" value={money(pending)} />
+      <OverviewLegend color={BLUE} label="Attended" value={String(attended)} />
+      <OverviewLegend color={GOLD} label="Late" value={String(late)} />
       <OverviewLegend color="#D3AAB6" label="Upcoming" value={String(calls.length)} />
     </View>
   </TouchableOpacity>;
@@ -674,7 +673,6 @@ function ActivityDetailModal({
           <DetailItem icon="location-outline" label="VENUE" value={activity.venueName || "Venue to be announced"} />
           <DetailItem icon="people-outline" label="DIVISION" value={activity.sectionType === "All" ? "All divisions" : activity.sectionType || "All divisions"} />
           <DetailItem icon="musical-notes-outline" label="YOUR PART" value={activity.role || "Member"} />
-          <DetailItem icon="cash-outline" label="PAYOUT" value={activity.payoutAmount ? money(activity.payoutAmount) : "None"} />
           <DetailItem icon="checkmark-circle-outline" label="ATTENDANCE" value={attendanceLabel(activity)} />
         </View>
         <Text style={styles.sectionLabel}>RSVP — SEPARATE FROM ATTENDANCE</Text>
@@ -730,11 +728,11 @@ export function ClockScreen({ route }: { route?: { params?: { sourceType?: strin
       const wasClockOut = Boolean(call.canClockOut);
       let alreadyClockedIn = false;
       let recordedClockOutAt: string | undefined;
+      if (!location) throw new Error("A current GPS location is required");
       if (wasClockOut) {
-        const result = await clockOutActivity(call.type, call.sourceId);
+        const result = await clockOutActivity(call.type, call.sourceId, location);
         recordedClockOutAt = result.attendance.clockOutAt ?? new Date().toISOString();
       } else {
-        if (!location) throw new Error("A current GPS location is required");
         const result = await clockInActivity(call.type, call.sourceId, location);
         alreadyClockedIn = result.alreadyClockedIn === true;
         setLocalAttendance({
@@ -1017,7 +1015,6 @@ export function ProfileScreen() {
     <View style={styles.accountList}>
       <PreferenceToggle icon="checkmark-circle-outline" label="RSVP reminders" value={preferenceValues.rsvpReminders} onPress={() => setBooleanPreference("rsvpReminders")} />
       <PreferenceToggle icon="calendar-outline" label="Schedule reminders" value={preferenceValues.scheduleReminders} onPress={() => setBooleanPreference("scheduleReminders")} />
-      <PreferenceToggle icon="wallet-outline" label="Payouts & stipends" value={preferenceValues.payoutUpdates} onPress={() => setBooleanPreference("payoutUpdates")} />
       <PreferenceToggle icon="ribbon-outline" label="Membership reminders" value={preferenceValues.membershipReminders} onPress={() => setBooleanPreference("membershipReminders")} />
     </View>
 
@@ -1134,16 +1131,9 @@ export function InboxScreen() {
   });
   const open = (item: AppNotification) => {
     if (!item.readAt) read.mutate(item.id);
-    if (item.type === "member_stipend_disbursed") {
-      navigation.navigate("Earnings", { view: "stipends", focusNonce: Date.now() });
-      return;
-    }
-    if (item.type === "member_payout_updated") {
-      navigation.navigate("Earnings", { view: "gigs", focusNonce: Date.now() });
-      return;
-    }
-    if (item.actionUrl === "Earnings") {
-      navigation.navigate("Earnings");
+    // Earnings/stipends aren't in this release; payout and stipend
+    // notifications just get marked read and stay in the inbox.
+    if (item.type === "member_stipend_disbursed" || item.type === "member_payout_updated" || item.actionUrl === "Earnings") {
       return;
     }
     if ((item.sourceType === "event" || item.sourceType === "rehearsal" || item.sourceType === "gig") && item.sourceId) {
@@ -1251,13 +1241,17 @@ const styles = StyleSheet.create({
   homeEmptyHero: { minHeight: 112, borderRadius: 20, backgroundColor: CARD, borderWidth: 1, borderColor: "rgba(132,0,22,.14)", padding: 18, flexDirection: "row", alignItems: "center", gap: 14 },
   homeEmptyTitle: { fontFamily: font.extraBold, fontSize: 16, color: INK },
   homeEmptyBody: { fontFamily: font.regular, fontSize: 10.5, lineHeight: 15, color: MUTED, marginTop: 3 },
+  notationEntry: { marginTop: 16, minHeight: 72, borderRadius: 20, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12 },
+  notationEntryCopy: { flex: 1 },
+  notationEntryTitle: { fontFamily: font.extraBold, fontSize: 15, color: INK },
+  notationEntryMeta: { fontFamily: font.regular, fontSize: 11, color: MUTED, marginTop: 2 },
   homeSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 22, marginBottom: 10 },
   homeOverviewTitle: { fontFamily: font.bold, fontSize: 15, letterSpacing: -0.25, color: INK },
   homeSeeAll: { fontFamily: font.semiBold, fontSize: 10, color: "#840016" },
   homeRadar: { borderTopWidth: 1, borderTopColor: BORDER },
   homeRadarRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 11, borderBottomWidth: 1, borderBottomColor: BORDER, position: "relative" },
   homeRadarLine: { width: 3, height: 36, borderRadius: 2 },
-  homeRadarDate: { width: 46, height: 48, borderRadius: 12, backgroundColor: WHITE, borderWidth: 1, borderColor: "rgba(132,0,22,.10)", alignItems: "center", justifyContent: "center", shadowColor: "#301728", shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  homeRadarDate: { width: 46, alignItems: "center", justifyContent: "center" },
   homeRadarDay: { fontFamily: font.extraBold, fontSize: 17, lineHeight: 19, color: INK },
   homeRadarMonth: { fontFamily: font.bold, fontSize: 6.5, letterSpacing: 1.2, color: DIM },
   homeRadarTitle: { fontFamily: font.bold, fontSize: 11.5, color: INK },

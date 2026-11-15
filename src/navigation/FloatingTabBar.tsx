@@ -15,23 +15,23 @@ type IoniconsName = React.ComponentProps<typeof Ionicons>["name"];
 const TAB_ICONS: Record<string, [IoniconsName, IoniconsName]> = {
   Home: ["home-outline", "home"],
   Schedule: ["calendar-outline", "calendar"],
-  Earnings: ["card-outline", "card"],
-  Member: ["ribbon-outline", "ribbon"],
+  Clock: ["time-outline", "time"],
   Profile: ["person-circle-outline", "person-circle"],
 };
 
+const VISIBLE_TABS = ["Home", "Schedule", "Clock", "Profile"];
+
 export default function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const visibleRoutes = state.routes.filter((route) => ["Home", "Schedule", "Earnings", "Member", "Profile"].includes(route.name));
+  const visibleRoutes = state.routes.filter((route) => VISIBLE_TABS.includes(route.name));
   const activeRoute = state.routes[state.index]?.name;
-  const activeRoot = activeRoute?.startsWith("Scholarship") ? "Member" : activeRoute;
 
   return (
     <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       <View style={styles.bar}>
         {visibleRoutes.map((route) => {
-          const isFocused = route.name === activeRoot;
-          const isRouteActive = route.name === activeRoute;
+          const isFocused = route.name === activeRoute;
+          const isRouteActive = isFocused;
           const { options } = descriptors[route.key];
           const label = (options.tabBarLabel ?? route.name) as string;
 
@@ -41,7 +41,14 @@ export default function FloatingTabBar({ state, descriptors, navigation }: Botto
               target: route.key,
               canPreventDefault: true,
             });
-            if (!isRouteActive && !event.defaultPrevented) navigation.navigate(route.name);
+            if (isRouteActive || event.defaultPrevented) return;
+            // The Clock tab should open on whichever call is live now, not on a
+            // call a previous Home/Schedule shortcut pointed it at.
+            if (route.name === "Clock") {
+              navigation.navigate("Clock", { sourceType: undefined, sourceId: undefined, focusNonce: Date.now() });
+            } else {
+              navigation.navigate(route.name);
+            }
           }
 
           return (

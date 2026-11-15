@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -13,12 +13,15 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { Controller, useForm } from "react-hook-form";
 import Toast from "react-native-toast-message";
 import { useAuth } from "../context/AuthContext";
 import { font } from "../constants/fonts";
+import { openPrivacyPolicy } from "../constants/links";
+import { isAppleSignInAvailable } from "../api/auth";
 
 const BG = "#840016";
 const HEADER = "#F1F0EC";
@@ -48,12 +51,22 @@ interface FormData {
 }
 
 export default function LoginScreen({ navigation }: { navigation: { navigate: (screen: string, params?: object) => void; goBack: () => void } }) {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, loginWithApple } = useAuth();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    let alive = true;
+    isAppleSignInAvailable().then((available) => alive && setAppleAvailable(available));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
     defaultValues: { email: "", password: "" },
   });
@@ -104,6 +117,21 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
           text1: "Google sign-in failed",
           text2: message,
         });
+      }
+    } finally {
+      setSocialLoading(false);
+    }
+  }
+
+  async function onAppleSignIn() {
+    if (loading || socialLoading) return;
+    setSocialLoading(true);
+    try {
+      await loginWithApple();
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message ?? "Could not complete sign-in.";
+      if (!/cancel/i.test(message)) {
+        Toast.show({ type: "error", text1: "Apple sign-in failed", text2: message });
       }
     } finally {
       setSocialLoading(false);
@@ -206,6 +234,18 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
                 <View style={styles.dividerLine} />
               </View>
 
+              {appleAvailable ? (
+                <View pointerEvents={loading || socialLoading ? "none" : "auto"} style={(loading || socialLoading) && styles.disabledBtn}>
+                  <AppleAuthentication.AppleAuthenticationButton
+                    buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                    buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                    cornerRadius={16}
+                    style={styles.appleBtn}
+                    onPress={onAppleSignIn}
+                  />
+                </View>
+              ) : null}
+
               <TouchableOpacity
                 accessibilityRole="button"
                 accessibilityLabel="Continue with Google"
@@ -221,6 +261,9 @@ export default function LoginScreen({ navigation }: { navigation: { navigate: (s
             </View>
 
             <Text style={styles.footer}>Need an account? Ask your conductor or section admin.</Text>
+            <TouchableOpacity accessibilityRole="link" onPress={openPrivacyPolicy} style={styles.legalLink}>
+              <Text style={styles.legalText}>Privacy Policy</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -259,5 +302,8 @@ const styles = StyleSheet.create({
   socialBtn: { height: 56, borderRadius: 16, backgroundColor: FIELD, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
   socialBtnText: { color: FIELD_INK, fontSize: 14, fontFamily: font.semiBold },
   disabledBtn: { opacity: 0.65 },
+  appleBtn: { height: 56, width: "100%" },
+  legalLink: { alignSelf: "center", marginTop: 12, paddingVertical: 6, paddingHorizontal: 10 },
+  legalText: { color: ON_PRIMARY, opacity: 0.85, fontSize: 11, fontFamily: font.semiBold, textDecorationLine: "underline" },
   footer: { color: ON_PRIMARY, opacity: 0.72, fontSize: 11, lineHeight: 17, fontFamily: font.regular, textAlign: "center", marginTop: 27 },
 });

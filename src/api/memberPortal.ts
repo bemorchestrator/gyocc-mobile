@@ -230,9 +230,9 @@ export async function clockInActivity(type: ActivityType, sourceId: string, loca
   return data;
 }
 
-export async function clockOutActivity(type: ActivityType, sourceId: string): Promise<ClockInResult> {
+export async function clockOutActivity(type: ActivityType, sourceId: string, location: ClockLocationEvidence): Promise<ClockInResult> {
   if (isPreviewMode()) return { success: true, attendance: { id: "preview", activityType: type, activityId: sourceId, status: "Completed", clockOutAt: new Date().toISOString() } };
-  const { data } = await client.post<ClockInResult>("/api/profile/member-portal/clock-out", { type, sourceId });
+  const { data } = await client.post<ClockInResult>("/api/profile/member-portal/clock-out", { type, sourceId, location });
   return data;
 }
 

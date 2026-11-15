@@ -81,21 +81,19 @@ export default function AttendanceMapModal({
     setSubmissionError(undefined);
     setClockMs(Date.now());
     setLocationMessage("Finding your location…");
-    if (action === "out") {
-      setLocationMessage("Review the venue, then confirm that you are finishing this activity.");
-      return;
-    }
+    // Clock-out needs the same on-site GPS proof as clock-in.
+    const verb = action === "in" ? "clock in" : "clock out";
 
     void (async () => {
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
         if (permission.status !== "granted") {
-          if (active) setLocationMessage("Location permission is required to clock in.");
+          if (active) setLocationMessage(`Location permission is required to ${verb}.`);
           return;
         }
         const servicesEnabled = await Location.hasServicesEnabledAsync();
         if (!servicesEnabled) {
-          if (active) setLocationMessage("Turn on Location Services to clock in.");
+          if (active) setLocationMessage(`Turn on Location Services to ${verb}.`);
           return;
         }
         const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
@@ -109,13 +107,13 @@ export default function AttendanceMapModal({
         };
         setMemberLocation(located);
         if (!suppliedVenue) setLocationMessage("The venue pin is not configured. Contact an administrator.");
-        else if (located.isMocked) setLocationMessage("Mock location data cannot be used to clock in.");
+        else if (located.isMocked) setLocationMessage(`Mock location data cannot be used to ${verb}.`);
         else if (located.accuracyMeters > 50) setLocationMessage(`GPS accuracy is ${Math.round(located.accuracyMeters)} m. Move to an open area and retry.`);
         else {
           const distance = distanceMeters(located, suppliedVenue);
           setLocationMessage(distance + located.accuracyMeters <= geofenceRadiusMeters
-            ? `You are inside the clock-in area (${Math.round(distance)} m from the venue).`
-            : `You are ${Math.round(distance)} m away. Move within ${geofenceRadiusMeters} m to clock in.`);
+            ? `You are inside the venue area (${Math.round(distance)} m from the venue).`
+            : `You are ${Math.round(distance)} m away. Move within ${geofenceRadiusMeters} m to ${verb}.`);
         }
       } catch {
         if (active) setLocationMessage("Your current position is unavailable. Retry when GPS is ready.");
@@ -128,7 +126,7 @@ export default function AttendanceMapModal({
   }, [action, geofenceRadiusMeters, refreshNonce, visible, venueLatitude, venueLongitude]);
 
   useEffect(() => {
-    if (!visible || action !== "in") return;
+    if (!visible) return;
     const timer = setInterval(() => setClockMs(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [action, visible]);
@@ -184,12 +182,12 @@ export default function AttendanceMapModal({
     && measuredDistance + memberLocation.accuracyMeters <= geofenceRadiusMeters
   );
   const displayedLocationMessage = submissionError
-    ?? (locationExpired ? "Your GPS position expired. Refresh it before clocking in." : locationMessage);
+    ?? (locationExpired ? `Your GPS position expired. Refresh it before you ${action === "in" ? "clock in" : "clock out"}.` : locationMessage);
 
   useEffect(() => {
-    if (visible && action === "in" && locationExpired) setRefreshNonce((value) => value + 1);
+    if (visible && locationExpired) setRefreshNonce((value) => value + 1);
   }, [action, locationExpired, visible]);
-  const confirmDisabled = busy || (action === "in" && !locationAccepted);
+  const confirmDisabled = busy || !locationAccepted;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
@@ -230,12 +228,10 @@ export default function AttendanceMapModal({
             <Ionicons name={action === "in" ? "navigate-circle" : "checkmark-circle"} size={19} color="#0D9488" />
             <Text style={styles.locationText}>{displayedLocationMessage}</Text>
           </View>
-          {action === "in" ? (
-            <TouchableOpacity style={styles.refreshButton} disabled={busy} onPress={() => { setSubmissionError(undefined); setRefreshNonce((value) => value + 1); }}>
-              <Ionicons name="refresh" size={16} color="#0D9488" />
-              <Text style={styles.refreshText}>Refresh GPS</Text>
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity style={styles.refreshButton} disabled={busy} onPress={() => { setSubmissionError(undefined); setRefreshNonce((value) => value + 1); }}>
+            <Ionicons name="refresh" size={16} color="#0D9488" />
+            <Text style={styles.refreshText}>Refresh GPS</Text>
+          </TouchableOpacity>
           {!googleMapsConfigured ? (
             <Text style={styles.warning}>Google map tiles require a new native build with the configured key.</Text>
           ) : null}

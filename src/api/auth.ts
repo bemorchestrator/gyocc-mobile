@@ -2,6 +2,7 @@ import client, { COOKIE_KEY } from "./client";
 import { User } from "../types";
 import { deleteSessionValue, getSessionValue, setSessionValue } from "../utils/sessionStorage";
 import { signInWithGoogleSocial } from "./betterAuthClient";
+import * as AppleAuthentication from "expo-apple-authentication";
 
 function tokenFrom(data: unknown): string | null {
   const record = (data ?? {}) as { token?: unknown; session?: { token?: unknown } };
@@ -141,6 +142,88 @@ export async function signInWithGoogle(): Promise<{ user: User }> {
   });
   if (!session?.user) {
     throw new Error("Google sign-in completed, but no session was returned.");
+  }
+
+  return session;
+}
+
+/** A one-off value Apple embeds in the identity token, so it can't be replayed. */
+function makeNonce(): string {
+  let out = "";
+  while (out.length < 32) out += Math.random().toString(36).slice(2);
+  return `${Date.now().toString(36)}.${out.slice(0, 32)}`;
+}
+
+/**
+ * Ask iOS for a fresh Sign in with Apple credential. Used both to sign in and
+ * to re-confirm identity before deleting the account (which also lets the
+ * server revoke the Apple grant with the one-time authorization code).
+ */
+export async function requestAppleCredential(): Promise<{
+  identityToken: string;
+  authorizationCode: string | null;
+  nonce: string;
+  fullName: string;
+}> {
+  const nonce = makeNonce();
+  let credential: AppleAuthentication.AppleAuthenticationCredential;
+  try {
+    credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce,
+    });
+  } catch (err) {
+    if ((err as { code?: string })?.code === "ERR_REQUEST_CANCELED") {
+      throw new Error("Apple sign-in was cancelled.");
+    }
+    throw err;
+  }
+  if (!credential.identityToken) {
+    throw new Error("Apple did not return a sign-in token. Please try again.");
+  }
+  const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return {
+    identityToken: credential.identityToken,
+    authorizationCode: credential.authorizationCode ?? null,
+    nonce,
+    fullName,
+  };
+}
+
+export async function isAppleSignInAvailable(): Promise<boolean> {
+  try {
+    return await AppleAuthentication.isAvailableAsync();
+  } catch {
+    return false;
+  }
+}
+
+export async function signInWithApple(): Promise<{ user: User }> {
+  await deleteSessionValue(COOKIE_KEY);
+  const apple = await requestAppleCredential();
+
+  const { data } = await client.post("/api/auth/sign-in/social", {
+    provider: "apple",
+    idToken: { token: apple.identityToken, nonce: apple.nonce },
+  });
+  await ensureSessionStored(data);
+
+  const session = await getSession();
+  if (!session?.user) {
+    throw new Error("Apple sign-in completed, but no session was returned.");
+  }
+
+  // Apple shares the person's name only on the very first sign-in, and never
+  // inside the token — save it now or it is gone.
+  if (!session.user.name.trim() && apple.fullName) {
+    await client.post("/api/auth/update-user", { name: apple.fullName }).catch(() => undefined);
+    session.user.name = apple.fullName;
   }
 
   return session;

@@ -1015,7 +1015,8 @@ function AttendanceContent({ portal, initialActivity, focusActivityKey, focusNon
     },
   });
   const clockOutMutation = useMutation({
-    mutationFn: (activity: PortalActivity) => clockOutActivity(activity.type, activity.sourceId),
+    // Unused legacy screen: clock-out now needs on-site GPS (see member/ClockInScreen).
+    mutationFn: (_activity: PortalActivity): Promise<unknown> => Promise.reject(new Error("Open the Clock screen to clock out.")),
     onSuccess: () => {
       void refreshAttendanceData(queryClient);
       Toast.show({ type: "success", text1: "Clock-out recorded" });
